@@ -14,8 +14,26 @@ import SwiftUI
 
 struct ExperimentalSettingsView: View {
 
+    @Default(.Experimental.downloads)
+    private var experimentalDownloads
+
+    @Default(.offlineMode)
+    private var offlineMode
+
     var body: some View {
-        Form {}
-            .navigationTitle(L10n.experimental)
+        Form {
+            Section {
+                Toggle(L10n.downloads, isOn: $experimentalDownloads)
+            } footer: {
+                Text("Experimental features may be unstable or removed in future versions.")
+            }
+        }
+        .navigationTitle(L10n.experimental)
+        .onChange(of: experimentalDownloads) { newValue in
+            // If experimental downloads is disabled, also disable offline mode
+            if !newValue && offlineMode {
+                offlineMode = false
+            }
+        }
     }
 }

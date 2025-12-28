@@ -7,6 +7,7 @@
 //
 
 import Defaults
+import JellyfinAPI
 import SwiftUI
 
 struct DownloadTaskView: View {
@@ -14,12 +15,11 @@ struct DownloadTaskView: View {
     @Router
     private var router
 
-    @ObservedObject
-    var downloadTask: DownloadTask
+    let item: BaseItemDto
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            ContentView(downloadTask: downloadTask)
+            ContentView(item: item)
         }
         .navigationBarCloseButton {
             router.dismiss()

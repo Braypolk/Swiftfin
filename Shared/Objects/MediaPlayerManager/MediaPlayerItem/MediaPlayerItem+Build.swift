@@ -17,6 +17,57 @@ import Logging
 
 extension MediaPlayerItem {
 
+    /// Builds a `MediaPlayerItem` for offline/downloaded content from StoredDownloadItem.
+    static func buildOffline(for storedItem: StoredDownloadItem) throws -> MediaPlayerItem {
+        guard let mediaPath = storedItem.mediaPath else {
+            throw ErrorMessage("No media file available for offline playback")
+        }
+
+        let mediaURL = URL.downloads.appendingPathComponent(mediaPath)
+
+        // Use the full BaseItemDto from StoredDownloadItem
+        let baseItem = storedItem.item
+        let mediaSource: MediaSourceInfo
+
+        if let savedMediaSource = baseItem.mediaSources?.first {
+            // Use the saved MediaSourceInfo with audio streams
+            mediaSource = savedMediaSource
+        } else {
+            // Fallback: Create a minimal MediaSourceInfo for offline playback
+            mediaSource = MediaSourceInfo(
+                id: storedItem.id,
+                isRemote: false,
+                name: baseItem.name,
+                path: mediaURL.absoluteString,
+                runTimeTicks: baseItem.runTimeTicks
+            )
+        }
+
+        return MediaPlayerItem(
+            baseItem: baseItem,
+            mediaSource: mediaSource,
+            playSessionID: "offline-\(storedItem.id)",
+            url: mediaURL
+        )
+    }
+
+    /// Builds a `MediaPlayerItem` for offline/downloaded content from DownloadItemDto.
+    /// This loads the StoredDownloadItem from CoreStore.
+    static func buildOffline(for downloadedItem: DownloadItemDto) throws -> MediaPlayerItem {
+        // Try to load the StoredDownloadItem from CoreStore
+        guard let userSession = Container.shared.currentUserSession(),
+              let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
+                  downloadedItem.id,
+                  ownerID: userSession.user.id,
+                  domain: "downloads"
+              )
+        else {
+            throw ErrorMessage("Unable to load downloaded item from storage")
+        }
+
+        return try buildOffline(for: storedItem)
+    }
+
     /// The main `MediaPlayerItem` builder for normal online usage.
     static func build(
         for initialItem: BaseItemDto,

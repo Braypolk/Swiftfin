@@ -17,14 +17,27 @@ extension ItemView {
 
         @Default(.accentColor)
         private var accentColor
+        @Default(.Experimental.downloads)
+        private var experimentalDownloads
 
         @StoredValue(.User.enabledTrailers)
         private var enabledTrailers: TrailerSelection
 
         @ObservedObject
         private var viewModel: ItemViewModel
+        @ObservedObject
+        private var downloadManager: DownloadManager
+
+        @Injected(\.downloadQueueService)
+        private var queueService: DownloadQueueService
 
         private let equalSpacing: Bool
+
+        @State
+        private var showingDownloadConfirmation = false
+
+        @State
+        private var episodeCount: Int?
 
         // MARK: - Has Trailers
 
@@ -40,10 +53,188 @@ extension ItemView {
             return false
         }
 
+        // MARK: - Download Status
+
+        private var downloadStatus: DownloadManager.DownloadItemStatus? {
+            guard let itemID = viewModel.item.id else { return nil }
+            return downloadManager.status(for: itemID)
+        }
+
+        private var downloadIcon: String {
+            guard let status = downloadStatus else { return "arrow.down" }
+
+            switch status.state {
+            case .downloading: return "arrow.down.circle.fill"
+            case .pending: return "clock"
+            case .paused: return "pause.circle.fill"
+            case .error: return "exclamationmark"
+            case .complete: return "trash"
+            case .cancelled: return "arrow.down"
+            }
+        }
+
+        // MARK: - Download Button Actions
+
+        private func handleDownloadButtonTap() {
+            guard let status = downloadStatus else {
+                // Check if this is a season or series that needs confirmation
+                if viewModel.item.type == .season || viewModel.item.type == .series {
+                    // Fetch episode count for confirmation
+                    Task {
+                        await fetchEpisodeCount()
+                        await MainActor.run {
+                            showingDownloadConfirmation = true
+                        }
+                    }
+                } else {
+                    // Start download immediately for movies/episodes
+                    downloadManager.queueItem(viewModel.item)
+                }
+                return
+            }
+
+            switch status.state {
+            case .downloading, .pending:
+                downloadManager.pause(itemID: viewModel.item.id ?? "")
+            case .paused:
+                downloadManager.resume(itemID: viewModel.item.id ?? "")
+            case .error, .cancelled:
+                downloadManager.retry(itemID: viewModel.item.id ?? "")
+            case .complete:
+                downloadManager.delete(itemID: viewModel.item.id ?? "")
+            }
+        }
+
+        private func fetchEpisodeCount() async {
+            guard let itemID = viewModel.item.id,
+                  let itemType = viewModel.item.type else { return }
+
+            do {
+                let count: Int
+                if itemType == .season {
+                    guard let seriesID = viewModel.item.seriesID else { return }
+                    count = try await queueService.countEpisodesToDownload(seasonID: itemID, seriesID: seriesID)
+                } else if itemType == .series {
+                    count = try await queueService.countEpisodesToDownload(seriesID: itemID)
+                } else {
+                    return
+                }
+
+                await MainActor.run {
+                    episodeCount = count
+                }
+            } catch {
+                // If fetching fails, proceed without count
+                await MainActor.run {
+                    episodeCount = nil
+                }
+            }
+        }
+
+        private func confirmDownload() {
+            downloadManager.queueItem(viewModel.item)
+            showingDownloadConfirmation = false
+            episodeCount = nil
+        }
+
+        // MARK: - View Modifiers
+
+        private func buttonFrame<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+            content()
+                .frame(maxWidth: .infinity)
+                .if(!equalSpacing) { view in
+                    view.aspectRatio(1, contentMode: .fit)
+                }
+        }
+
+        // MARK: - Download Button View
+
+        @ViewBuilder
+        private var downloadButton: some View {
+            if let status = downloadStatus {
+                switch status.state {
+                case .downloading:
+                    buttonFrame {
+                        Button {
+                            handleDownloadButtonTap()
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.white.opacity(0.3), lineWidth: 3)
+
+                                Circle()
+                                    .trim(from: 0, to: status.progress ?? 0)
+                                    .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                    .rotationEffect(.degrees(-90))
+                                    .animation(.linear(duration: 0.1), value: status.progress ?? 0)
+                            }
+                            .frame(width: 24, height: 24)
+                        }
+                    }
+
+                case .paused:
+                    buttonFrame {
+                        Menu {
+                            Button {
+                                downloadManager.resume(itemID: viewModel.item.id ?? "")
+                            } label: {
+                                Label("Resume", systemImage: "play.circle")
+                            }
+
+                            Button(role: .destructive) {
+                                downloadManager.delete(itemID: viewModel.item.id ?? "")
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: downloadIcon)
+                        }
+                    }
+
+                case .error, .cancelled:
+                    buttonFrame {
+                        Menu {
+                            Button {
+                                downloadManager.retry(itemID: viewModel.item.id ?? "")
+                            } label: {
+                                Label("Retry", systemImage: "arrow.clockwise")
+                            }
+
+                            Button(role: .destructive) {
+                                downloadManager.delete(itemID: viewModel.item.id ?? "")
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: downloadIcon)
+                        }
+                    }
+
+                default:
+                    buttonFrame {
+                        Button {
+                            handleDownloadButtonTap()
+                        } label: {
+                            Image(systemName: downloadIcon)
+                        }
+                    }
+                }
+            } else {
+                buttonFrame {
+                    Button {
+                        handleDownloadButtonTap()
+                    } label: {
+                        Image(systemName: downloadIcon)
+                    }
+                }
+            }
+        }
+
         // MARK: - Initializer
 
         init(viewModel: ItemViewModel, equalSpacing: Bool = true) {
             self.viewModel = viewModel
+            self.downloadManager = Container.shared.downloadManager()
             self.equalSpacing = equalSpacing
         }
 
@@ -112,11 +303,41 @@ extension ItemView {
                         view.aspectRatio(1, contentMode: .fit)
                     }
                 }
+
+                // MARK: - Download Button
+
+                if experimentalDownloads {
+                    downloadButton
+                }
             }
             .font(.title3)
             .fontWeight(.semibold)
             .buttonStyle(.material)
             .labelStyle(.iconOnly)
+            .confirmationDialog(
+                "Download \(viewModel.item.type == .season ? "Season" : "Series")",
+                isPresented: $showingDownloadConfirmation,
+                titleVisibility: .visible
+            ) {
+                if let count = episodeCount {
+                    Button("Download \(count) Episode\(count == 1 ? "" : "s")") {
+                        confirmDownload()
+                    }
+                } else {
+                    Button("Download") {
+                        confirmDownload()
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    episodeCount = nil
+                }
+            } message: {
+                if let count = episodeCount {
+                    Text("This will download \(count) episode\(count == 1 ? "" : "s").")
+                } else {
+                    Text("This will download all episodes in this \(viewModel.item.type == .season ? "season" : "series").")
+                }
+            }
         }
     }
 }

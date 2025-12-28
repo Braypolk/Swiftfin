@@ -294,6 +294,11 @@ final class MediaPlayerManager: ViewModel {
 
     @Function(\Action.Cases.start)
     private func _start() async throws {
+        // If we already have a playbackItem (e.g., from offline playback), don't stop
+        if playbackItem != nil {
+            return
+        }
+
         guard let initialMediaPlayerItemProvider else {
             await self.stop()
             return

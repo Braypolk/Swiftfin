@@ -16,7 +16,7 @@ import UIKit
 
 // TODO: come up with a cleaner, more defined way for item update notifications
 
-class ItemViewModel: ViewModel, Stateful {
+class ItemViewModel: ViewModel, Stateful, ItemViewModelProtocol {
 
     // MARK: Action
 

@@ -31,7 +31,12 @@ final class RootCoordinator: ObservableObject {
                     }
                     #else
                     await MainActor.run {
-                        root(.serverCheck)
+                        // If offline mode is enabled AND experimental downloads is enabled, skip server check and go directly to main tab
+                        if Defaults[.offlineMode] && Defaults[.Experimental.downloads] {
+                            root(.mainTab)
+                        } else {
+                            root(.serverCheck)
+                        }
                     }
                     #endif
                 } else {
@@ -64,7 +69,12 @@ final class RootCoordinator: ObservableObject {
         #if os(tvOS)
         root(.mainTab)
         #else
-        root(.serverCheck)
+        // If offline mode is enabled AND experimental downloads is enabled, skip server check and go directly to main tab
+        if Defaults[.offlineMode] && Defaults[.Experimental.downloads] {
+            root(.mainTab)
+        } else {
+            root(.serverCheck)
+        }
         #endif
     }
 

@@ -133,7 +133,10 @@ extension VLCMediaPlayerProxy {
 
             if !baseItem.isLiveStream {
                 configuration.startSeconds = startSeconds
-                configuration.audioIndex = .absolute(mediaSource.defaultAudioStreamIndex ?? -1)
+                configuration
+                    .audioIndex = .absolute(mediaSource
+                        .defaultAudioStreamIndex ??
+                        -1) // BRAY-TODO: offline currently doesn't correctly assign audiostreamindex so no audio track plays
                 configuration.subtitleIndex = .absolute(mediaSource.defaultSubtitleStreamIndex ?? -1)
             }
 

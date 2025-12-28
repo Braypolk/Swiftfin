@@ -408,30 +408,29 @@ extension BaseItemDto {
             }
     }
 
-    // TODO: series-season-episode hierarchy for episodes
-    // TODO: user hierarchy for downloads
+    /// Returns the download folder for this item based on its type.
+    /// The folder structure is hierarchical:
+    /// - movies/{itemID}/
+    /// - series/{seriesID}/
+    /// - series/{seriesID}/seasons/{seasonID}/
+    /// - series/{seriesID}/seasons/{seasonID}/episodes/{episodeID}/
     var downloadFolder: URL? {
         guard let type, let id else { return nil }
 
-        let root = URL.downloads
-//            .appendingPathComponent(userSession.user.id)
-
         switch type {
-        case .movie, .episode:
-            return root
-                .appendingPathComponent(id)
-//        case .episode:
-//            guard let seasonID = seasonID,
-//                  let seriesID = seriesID
-//            else {
-//                return nil
-//            }
-//            return root
-//                .appendingPathComponent(seriesID)
-//                .appendingPathComponent(seasonID)
-//                .appendingPathComponent(id)
+        case .movie:
+            return URL.movieDownloadFolder(itemID: id)
+        case .series:
+            return URL.seriesDownloadFolder(seriesID: id)
+        case .season:
+            guard let seriesID = seriesID else { return nil }
+            return URL.seasonDownloadFolder(seriesID: seriesID, seasonID: id)
+        case .episode:
+            guard let seriesID = seriesID, let seasonID = seasonID else { return nil }
+            return URL.episodeDownloadFolder(seriesID: seriesID, seasonID: seasonID, episodeID: id)
         default:
-            return nil
+            // For other playable types, use movies folder
+            return URL.movieDownloadFolder(itemID: id)
         }
     }
 

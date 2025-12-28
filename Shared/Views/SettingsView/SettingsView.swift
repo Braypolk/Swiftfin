@@ -17,6 +17,11 @@ struct SettingsView: View {
     var router
 
     #if os(iOS)
+    @EnvironmentObject
+    private var rootCoordinator: RootCoordinator
+    #endif
+
+    #if os(iOS)
     @Default(.userAppearance)
     private var appearance
     #endif
@@ -26,6 +31,14 @@ struct SettingsView: View {
 
     @Default(.VideoPlayer.videoPlayerType)
     private var videoPlayerType
+
+    #if os(iOS)
+    @Default(.offlineMode)
+    private var offlineMode
+
+    @Default(.Experimental.downloads)
+    private var experimentalDownloads
+    #endif
 
     @StateObject
     private var viewModel = SettingsViewModel()
@@ -43,6 +56,12 @@ struct SettingsView: View {
         .navigationTitle(L10n.settings)
         .navigationBarCloseButton {
             router.dismiss()
+        }
+        .onChange(of: experimentalDownloads) { newValue in
+            // If experimental downloads is disabled, also disable offline mode
+            if !newValue && offlineMode {
+                offlineMode = false
+            }
         }
         #endif
     }
@@ -158,6 +177,10 @@ struct SettingsView: View {
         Section {
             ChevronButton(L10n.logs) {
                 router.route(to: .log)
+            }
+
+            ChevronButton(L10n.experimental) {
+                router.route(to: .experimentalSettings)
             }
 
             #if DEBUG && os(iOS)

@@ -92,6 +92,7 @@ extension Defaults.Keys {
 
     static let signOutOnBackground: Key<Bool> = AppKey("signOutOnBackground", default: true)
     static let signOutOnClose: Key<Bool> = AppKey("signOutOnClose", default: false)
+    static let offlineMode: Key<Bool> = AppKey("offlineMode", default: false)
 }
 
 // MARK: User

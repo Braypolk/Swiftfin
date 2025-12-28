@@ -92,4 +92,14 @@ extension TabItem {
     ) {
         SettingsView()
     }
+
+    #if os(iOS)
+    static let downloads = TabItem(
+        id: "downloads",
+        title: L10n.downloads,
+        systemImage: "arrow.down.circle.fill"
+    ) {
+        DownloadPagingLibraryView()
+    }
+    #endif
 }

@@ -14,29 +14,39 @@ struct DownloadTaskButton: View {
 
     @ObservedObject
     private var downloadManager: DownloadManager
-    @ObservedObject
-    private var downloadTask: DownloadTask
 
-    private var onSelect: (DownloadTask) -> Void
+    private let item: BaseItemDto
+    private var onSelect: (BaseItemDto) -> Void
+
+    private var downloadStatus: DownloadManager.DownloadItemStatus? {
+        guard let itemID = item.id else { return nil }
+        return downloadManager.status(for: itemID)
+    }
 
     var body: some View {
         Button {
-            onSelect(downloadTask)
+            onSelect(item)
         } label: {
-            switch downloadTask.state {
-            case .cancelled:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundColor(.red)
-            case .complete:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-            case .downloading:
-                EmptyView()
-//                CircularProgressView(progress: progress)
-            case .error:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundColor(.red)
-            case .ready:
+            if let status = downloadStatus {
+                switch status.state {
+                case .cancelled:
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.red)
+                case .complete:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                case .downloading:
+                    EmptyView()
+                case .error:
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.red)
+                case .pending:
+                    Image(systemName: "arrow.down.circle")
+                case .paused:
+                    Image(systemName: "pause.circle.fill")
+                        .foregroundColor(.orange)
+                }
+            } else {
                 Image(systemName: "arrow.down.circle")
             }
         }
@@ -46,14 +56,12 @@ struct DownloadTaskButton: View {
 extension DownloadTaskButton {
 
     init(item: BaseItemDto) {
-        let downloadManager = Container.shared.downloadManager()
-
-        self.downloadTask = downloadManager.task(for: item) ?? .init(item: item)
+        self.item = item
+        self.downloadManager = Container.shared.downloadManager()
         self.onSelect = { _ in }
-        self.downloadManager = downloadManager
     }
 
-    func onSelect(_ action: @escaping (DownloadTask) -> Void) -> Self {
+    func onSelect(_ action: @escaping (BaseItemDto) -> Void) -> Self {
         copy(modifying: \.onSelect, with: action)
     }
 }

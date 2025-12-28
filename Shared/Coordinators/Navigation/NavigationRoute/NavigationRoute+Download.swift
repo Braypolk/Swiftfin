@@ -11,24 +11,42 @@ import SwiftUI
 
 extension NavigationRoute {
 
-    static let downloadList = NavigationRoute(
-        id: "downloadList"
+    // MARK: - Download Library
+
+    static let downloadLibrary = NavigationRoute(
+        id: "downloadLibrary"
     ) {
         #if os(iOS)
-        DownloadListView(viewModel: .init())
+        DownloadPagingLibraryView()
         #else
         EmptyView()
         #endif
     }
 
+    // MARK: - Download Item
+
     #if os(iOS)
-    static func downloadTask(downloadTask: DownloadTask) -> NavigationRoute {
+    static func downloadItem(item: DownloadItemDto) -> NavigationRoute {
         NavigationRoute(
-            id: "downloadTask",
-            style: .sheet
+            id: "downloadItem-\(item.id)"
         ) {
-            DownloadTaskView(downloadTask: downloadTask)
+            DownloadItemView(item: item)
         }
     }
     #endif
+
+    // MARK: - Download Queue
+
+    static let downloadQueue = NavigationRoute(
+        id: "downloadQueue",
+        style: .sheet
+    ) {
+        #if os(iOS)
+        NavigationView {
+            DownloadQueueView(viewModel: DownloadPagingLibraryViewModel())
+        }
+        #else
+        EmptyView()
+        #endif
+    }
 }

@@ -196,6 +196,53 @@ extension StoredValues.Keys {
                 default: .trickplay(fallbackToChapters: false)
             )
         }
+
+        // MARK: - Downloads
+
+        /// The persisted download queue
+        static var downloadQueue: Key<[DownloadQueueItem]> {
+            CurrentUserKey(
+                "downloadQueue",
+                domain: "downloads",
+                default: []
+            )
+        }
+
+        /// Get the download state for a specific item
+        static func downloadState(itemID: String) -> Key<DownloadItemState> {
+            CurrentUserKey(
+                itemID,
+                domain: "downloadStates",
+                default: .pending
+            )
+        }
+
+        /// Get the resume info for a paused download
+        static func downloadResumeInfo(itemID: String) -> Key<DownloadResumeInfo?> {
+            CurrentUserKey(
+                "resume-\(itemID)",
+                domain: "downloadResumeInfo",
+                default: nil
+            )
+        }
+
+        /// Get persisted download progress (bytes downloaded)
+        static func downloadBytesDownloaded(itemID: String) -> Key<Int64> {
+            CurrentUserKey(
+                "bytes-\(itemID)",
+                domain: "downloadProgress",
+                default: 0
+            )
+        }
+
+        /// Get persisted total bytes for a download
+        static func downloadTotalBytes(itemID: String) -> Key<Int64> {
+            CurrentUserKey(
+                "total-\(itemID)",
+                domain: "downloadTotalBytes",
+                default: 0
+            )
+        }
     }
 }
 

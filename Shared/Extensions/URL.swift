@@ -26,8 +26,42 @@ extension URL {
         documents.appendingPathComponent("Downloads")
     }
 
+    // MARK: - Hierarchical Download Paths
+
+    static var downloadsMovies: URL {
+        downloads.appendingPathComponent("movies")
+    }
+
+    static var downloadsSeries: URL {
+        downloads.appendingPathComponent("series")
+    }
+
+    /// Returns the download folder for a movie
+    static func movieDownloadFolder(itemID: String) -> URL {
+        downloadsMovies.appendingPathComponent(itemID)
+    }
+
+    /// Returns the download folder for a series
+    static func seriesDownloadFolder(seriesID: String) -> URL {
+        downloadsSeries.appendingPathComponent(seriesID)
+    }
+
+    /// Returns the download folder for a season within a series
+    static func seasonDownloadFolder(seriesID: String, seasonID: String) -> URL {
+        seriesDownloadFolder(seriesID: seriesID)
+            .appendingPathComponent("seasons")
+            .appendingPathComponent(seasonID)
+    }
+
+    /// Returns the download folder for an episode within a season
+    static func episodeDownloadFolder(seriesID: String, seasonID: String, episodeID: String) -> URL {
+        seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
+            .appendingPathComponent("episodes")
+            .appendingPathComponent(episodeID)
+    }
+
     static var tmp: URL {
-        URL(string: NSTemporaryDirectory())!
+        URL(fileURLWithPath: NSTemporaryDirectory())
     }
 
     static let swiftfinGithub: URL = URL(string: "https://github.com/jellyfin/Swiftfin")!

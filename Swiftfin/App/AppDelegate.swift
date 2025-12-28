@@ -15,7 +15,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        true
+        // Initialize background download session early to reconnect to any existing downloads
+        _ = BackgroundDownloadSession.shared
+        return true
     }
 
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
@@ -28,5 +30,20 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         return UIDevice.isPad ? .allButUpsideDown : .portrait
+    }
+
+    // MARK: - Background URL Session Handling
+
+    /// Called when iOS wakes the app to handle background URL session events
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        if identifier == BackgroundDownloadSession.identifier {
+            BackgroundDownloadSession.shared.storeCompletionHandler(completionHandler)
+        } else {
+            completionHandler()
+        }
     }
 }

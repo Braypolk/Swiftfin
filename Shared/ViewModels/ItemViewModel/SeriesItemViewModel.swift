@@ -16,7 +16,7 @@ import JellyfinAPI
 // TODO: care for one long episodes list?
 //       - after SeasonItemViewModel is bidirectional
 //       - would have to see if server returns right amount of episodes/season
-final class SeriesItemViewModel: ItemViewModel {
+final class SeriesItemViewModel: ItemViewModel, SeriesViewModelProtocol {
 
     @Published
     var seasons: IdentifiedArrayOf<SeasonItemViewModel> = []
@@ -50,7 +50,7 @@ final class SeriesItemViewModel: ItemViewModel {
 
                     let newSeasons = try await seasons
                         .sorted { ($0.indexNumber ?? -1) < ($1.indexNumber ?? -1) }
-                        .map(SeasonItemViewModel.init)
+                        .map { SeasonItemViewModel(ServerSeasonItemViewModel(season: $0)) }
 
                     await MainActor.run {
                         self.seasons.append(contentsOf: newSeasons)

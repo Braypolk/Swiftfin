@@ -6,6 +6,7 @@
 // Copyright (c) 2025 Jellyfin & Jellyfin Contributors
 //
 
+import Defaults
 import SwiftUI
 
 struct ServerCheckView: View {
@@ -19,6 +20,12 @@ struct ServerCheckView: View {
     @StateObject
     private var viewModel = ServerCheckViewModel()
 
+    @Default(.offlineMode)
+    private var offlineMode
+
+    @Default(.Experimental.downloads)
+    private var experimentalDownloads
+
     var body: some View {
         ZStack {
             switch viewModel.state {
@@ -29,8 +36,8 @@ struct ServerCheckView: View {
                     ProgressView()
                 }
             case .error:
-                viewModel.error.map {
-                    ErrorView(error: $0)
+                viewModel.error.map { error in
+                    ErrorView(error: error)
                 }
             }
         }
@@ -48,6 +55,19 @@ struct ServerCheckView: View {
             }
         }
         .topBarTrailing {
+            // Show offline mode toggle if experimental downloads is enabled
+            if experimentalDownloads {
+                Button {
+                    let wasOffline = offlineMode
+                    offlineMode.toggle()
+                    // When offline mode is enabled, navigate to main tab (which will only show downloads)
+                    if !wasOffline && offlineMode {
+                        rootCoordinator.root(.mainTab)
+                    }
+                } label: {
+                    Image(systemName: offlineMode ? "wifi.slash" : "wifi")
+                }
+            }
 
             SettingsBarButton(
                 server: viewModel.userSession.server,

@@ -6,6 +6,7 @@
 // Copyright (c) 2025 Jellyfin & Jellyfin Contributors
 //
 
+import Defaults
 import Factory
 import SwiftUI
 
@@ -16,11 +17,25 @@ import SwiftUI
 struct MainTabView: View {
 
     #if os(iOS)
+    @Default(.Experimental.downloads)
+    private var experimentalDownloads
+
+    @Default(.offlineMode)
+    private var offlineMode
+
     @StateObject
     private var tabCoordinator = TabCoordinator {
-        TabItem.home
-        TabItem.search
-        TabItem.media
+        // In offline mode, only show downloads tab (if experimental downloads is enabled)
+        if Defaults[.offlineMode] && Defaults[.Experimental.downloads] {
+            TabItem.downloads
+        } else {
+            TabItem.home
+            TabItem.search
+            TabItem.media
+            if Defaults[.Experimental.downloads] {
+                TabItem.downloads
+            }
+        }
     }
     #else
     @StateObject

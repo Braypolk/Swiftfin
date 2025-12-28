@@ -10,10 +10,10 @@ import SwiftUI
 
 extension ItemView {
 
-    struct AttributesHStack: View {
+    struct AttributesHStack<ViewModel: ItemViewModelProtocol>: View {
 
         @ObservedObject
-        private var viewModel: ItemViewModel
+        private var viewModel: ViewModel
 
         private let alignment: HorizontalAlignment
         private let attributes: [ItemViewAttribute]
@@ -21,7 +21,7 @@ extension ItemView {
 
         init(
             attributes: [ItemViewAttribute],
-            viewModel: ItemViewModel,
+            viewModel: ViewModel,
             alignment: HorizontalAlignment = .center,
             flowDirection: FlowLayout.Direction = .up
         ) {

@@ -14,7 +14,7 @@ import SwiftUI
 //       A theoretically better implementation would be a single CollectionHStack with cards that represent the state instead.
 extension SeriesEpisodeSelector {
 
-    struct EpisodeHStack: View {
+    struct EpisodeHStack<ParentViewModel: SeriesViewModelProtocol>: View {
 
         @ObservedObject
         var viewModel: SeasonItemViewModel
@@ -26,6 +26,7 @@ extension SeriesEpisodeSelector {
         private var proxy = CollectionHStackProxy()
 
         let playButtonItem: BaseItemDto?
+        let parentViewModel: ParentViewModel
 
         private func contentView(viewModel: SeasonItemViewModel) -> some View {
             CollectionHStack(
@@ -33,7 +34,11 @@ extension SeriesEpisodeSelector {
                 id: \.unwrappedIDHashOrZero,
                 columns: UIDevice.isPhone ? 1.5 : 3.5
             ) { episode in
-                SeriesEpisodeSelector.EpisodeCard(episode: episode)
+                if parentViewModel is DownloadItemViewModel {
+                    DownloadItemView.DownloadEpisodeCard(episode: episode)
+                } else {
+                    SeriesEpisodeSelector.EpisodeCard(episode: episode)
+                }
             }
             .clipsToBounds(false)
             .scrollBehavior(.continuousLeadingEdge)
