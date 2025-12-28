@@ -36,34 +36,27 @@ class DownloadManager: ObservableObject {
     @Injected(\.downloadQueueService)
     private var queueService: DownloadQueueService
 
-    /// Current manager state
     @Published
     private(set) var state: State = .idle
 
-    /// The download queue (persisted)
     @Published
     private(set) var queue: [DownloadQueueItem] = []
 
-    /// Currently active download task
     @Published
     private(set) var currentTask: DownloadTask?
 
-    /// Completed downloaded items (from CoreStore/disk)
     @Published
     private(set) var completedItems: [DownloadItemDto] = []
 
-    /// Download states for each item
     @Published
     private(set) var itemStates: [String: DownloadItemState] = [:]
 
-    /// Progress tracking for each item (0.0 to 1.0)
     @Published
     private(set) var itemProgress: [String: Double] = [:]
 
     private var cancellables = Set<AnyCancellable>()
     private var currentTaskCancellable: AnyCancellable?
 
-    /// Cached stored items from CoreStore (invalidated on add/remove)
     private var cachedStoredItems: [StoredDownloadItem]?
 
     // MARK: - Initialization
@@ -77,7 +70,6 @@ class DownloadManager: ObservableObject {
         // Initialize background download session early
         _ = BackgroundDownloadSession.shared
 
-        // Auto-resume processing if there are items in queue
         if !queue.isEmpty {
             processNextInQueue()
         }
@@ -181,7 +173,6 @@ class DownloadManager: ObservableObject {
 
     // MARK: - Download Control
 
-    /// Pause a specific download
     func pause(itemID: String) {
         if currentTask?.id == itemID {
             currentTask?.pause()
@@ -193,7 +184,6 @@ class DownloadManager: ObservableObject {
         persistQueue()
     }
 
-    /// Resume a paused download
     func resume(itemID: String) {
         // Check if there's resume data available
         let hasResumeData = StoredValues[.User.downloadResumeInfo(itemID: itemID)] != nil
@@ -218,7 +208,6 @@ class DownloadManager: ObservableObject {
         }
     }
 
-    /// Retry a failed download
     func retry(itemID: String) {
         itemStates[itemID] = .pending
         persistQueue()
@@ -228,21 +217,17 @@ class DownloadManager: ObservableObject {
         }
     }
 
-    /// Delete a download (from queue or completed)
-    /// For seasons and series, this will recursively delete all child episodes
     func delete(itemID: String) {
         deleteGroup(id: itemID)
     }
 
-    /// Delete a group of downloads (from queue or completed)
-    /// This handles both individual items and groups identified by groupId
     func deleteGroup(id: String) {
         guard let userSession = Container.shared.currentUserSession() else { return }
 
         // Find all items in this group from the queue
         let queuedItemsInGroup = queue.filter { $0.id == id || $0.groupId == id }
 
-        // Find children if this is a series or season (for completeness)
+        // Handle cases where deletion affects series or seasons
         var childrenIDs: Set<String> = []
         if let firstItem = queuedItemsInGroup.first {
             if firstItem.type == .series {
@@ -255,12 +240,10 @@ class DownloadManager: ObservableObject {
         let allIDsToDelete = Set(queuedItemsInGroup.map(\.id)).union(childrenIDs).union([id])
 
         for itemID in allIDsToDelete {
-            // Determine the item type by checking CoreStore or queue
             var itemType: BaseItemKind?
             var seriesID: String?
             var seasonID: String?
 
-            // Try to get from CoreStore first
             if let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(itemID, ownerID: userSession.user.id, domain: "downloads") {
                 itemType = storedItem.type
                 seriesID = storedItem.seriesID
@@ -271,7 +254,6 @@ class DownloadManager: ObservableObject {
                 seasonID = queueItem.seasonID
             }
 
-            // Handle bulk deletion for seasons and series (if not already covered)
             if let type = itemType {
                 switch type {
                 case .season:
@@ -285,15 +267,12 @@ class DownloadManager: ObservableObject {
                 }
             }
 
-            // Remove from queue
             queue.removeAll(where: { $0.id == itemID })
             itemStates.removeValue(forKey: itemID)
             itemProgress.removeValue(forKey: itemID)
 
-            // Cancel any active background download
             BackgroundDownloadSession.shared.cancelDownload(itemID: itemID)
 
-            // Clean up stored resume data and progress
             if let resumeInfo = StoredValues[.User.downloadResumeInfo(itemID: itemID)] {
                 BackgroundDownloadSession.shared.deleteResumeData(resumeInfo.resumeData)
             }
@@ -301,7 +280,6 @@ class DownloadManager: ObservableObject {
             StoredValues[.User.downloadBytesDownloaded(itemID: itemID)] = 0
             StoredValues[.User.downloadTotalBytes(itemID: itemID)] = 0
 
-            // Cancel if currently downloading
             if currentTask?.id == itemID {
                 currentTask?.cancel()
                 currentTask = nil
@@ -309,12 +287,10 @@ class DownloadManager: ObservableObject {
                 currentTaskCancellable = nil
             }
 
-            // Remove from completed items
             if completedItems.contains(where: { $0.id == itemID }) {
                 completedItems.removeAll(where: { $0.id == itemID })
             }
 
-            // Delete files and CoreStore entry
             deleteItem(itemID: itemID)
         }
 
@@ -322,24 +298,20 @@ class DownloadManager: ObservableObject {
         processNextInQueue()
     }
 
-    /// Delete all episodes in a season
     private func deleteSeasonEpisodes(seasonID: String, seriesID: String) {
         let allStoredItems = loadStoredItemsFromCoreStore()
         let seasonEpisodes = allStoredItems.filter { $0.seasonID == seasonID && $0.seriesID == seriesID && $0.type == .episode }
 
         // Delete each episode
         for episode in seasonEpisodes {
-            // Remove from queue
             queue.removeAll(where: { $0.id == episode.id })
             itemStates.removeValue(forKey: episode.id)
 
-            // Cancel if currently downloading
             if currentTask?.id == episode.id {
                 currentTask?.cancel()
                 currentTask = nil
             }
 
-            // Delete files and CoreStore entry
             deleteItem(itemID: episode.id)
         }
 
@@ -355,7 +327,6 @@ class DownloadManager: ObservableObject {
         }
     }
 
-    /// Delete all seasons and episodes in a series
     private func deleteSeriesContent(seriesID: String) {
         let allStoredItems = loadStoredItemsFromCoreStore()
         let seriesEpisodes = allStoredItems.filter { $0.seriesID == seriesID && $0.type == .episode }
@@ -395,10 +366,8 @@ class DownloadManager: ObservableObject {
     // MARK: - Queue Processing
 
     private func processNextInQueue() {
-        // Don't start new download if one is active
         guard currentTask == nil || currentTask?.state.isActive == false else { return }
 
-        // Find next pending item
         guard let nextItem = queue.first(where: { itemStates[$0.id] == .pending }) else {
             state = .idle
             return
@@ -423,11 +392,9 @@ class DownloadManager: ObservableObject {
                         }
                     }
 
-                    // Observe task state changes
                     currentTaskCancellable = task.$state
                         .receive(on: RunLoop.main)
                         .sink { [weak self] taskState in
-                            // Map DownloadTask.State to DownloadItemState
                             let itemState: DownloadItemState = switch taskState {
                             case .pending: .pending
                             case .downloading: .downloading
@@ -437,7 +404,6 @@ class DownloadManager: ObservableObject {
                             case .cancelled: .cancelled
                             }
                             self?.itemStates[queueItem.id] = itemState
-                            // Track progress separately
                             if let progress = taskState.progress {
                                 self?.itemProgress[queueItem.id] = progress
                             }
@@ -520,8 +486,6 @@ class DownloadManager: ObservableObject {
         currentTaskCancellable = nil
 
         persistQueue()
-
-        // Process next item
         processNextInQueue()
     }
 
@@ -530,7 +494,6 @@ class DownloadManager: ObservableObject {
     private func persistQueue() {
         StoredValues[.User.downloadQueue] = queue
 
-        // Also persist individual states
         for (itemID, state) in itemStates {
             StoredValues[.User.downloadState(itemID: itemID)] = state
         }
@@ -539,7 +502,6 @@ class DownloadManager: ObservableObject {
     private func loadPersistedQueue() {
         queue = StoredValues[.User.downloadQueue]
 
-        // Load states for each queued item
         for item in queue {
             itemStates[item.id] = StoredValues[.User.downloadState(itemID: item.id)]
         }
@@ -567,7 +529,6 @@ class DownloadManager: ObservableObject {
                 return item
             }
 
-            // Cache the results
             cachedStoredItems = items
             return items
         } catch {
@@ -576,17 +537,14 @@ class DownloadManager: ObservableObject {
         }
     }
 
-    /// Invalidate the cached stored items (call after adding or removing items)
     private func invalidateCache() {
         cachedStoredItems = nil
     }
 
     private func loadCompletedItems() {
-        // Load from CoreStore (primary source of truth)
         let allStoredItems = loadStoredItemsFromCoreStore()
 
-        // Convert to DownloadItemDto and filter to only movies/series for completedItems array
-        // Episodes and seasons are accessible via navigation from series
+        // Episodes and seasons are accessible via navigation from series, so only include movies/series here
         completedItems = allStoredItems
             .filter { $0.type == .movie || $0.type == .series }
             .map { DownloadItemDto(from: $0) }
@@ -727,7 +685,7 @@ class DownloadManager: ObservableObject {
     func aggregatedStatus(for itemID: String, type: BaseItemKind) -> AggregatedDownloadStatus? {
         guard let userSession = Container.shared.currentUserSession() else { return nil }
 
-        // Try to get the item from CoreStore to get seriesID/seasonID
+        // Try to get the item from CoreStore, then check the queue if not found
         guard let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(itemID, ownerID: userSession.user.id, domain: "downloads")
         else {
             // Item not in CoreStore, check if it's in queue

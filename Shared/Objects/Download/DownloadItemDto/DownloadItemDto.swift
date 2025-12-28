@@ -9,10 +9,7 @@
 import Foundation
 import JellyfinAPI
 
-// MARK: - DownloadItemDto
-
 /// A display-oriented struct derived from StoredDownloadItem for UI purposes.
-/// The actual storage is done via StoredDownloadItem in CoreStore.
 struct DownloadItemDto: Codable, Hashable, Identifiable {
 
     // MARK: - Identity
@@ -57,11 +54,7 @@ struct DownloadItemDto: Codable, Hashable, Identifiable {
     let isFavorite: Bool
     let played: Bool
 
-    // MARK: - People (for cast display)
-
     let people: [DownloadPersonDto]?
-
-    // MARK: - Studios
 
     let studios: [DownloadStudioDto]?
 
@@ -149,11 +142,8 @@ struct DownloadItemDto: Codable, Hashable, Identifiable {
     }
 }
 
-// MARK: - DownloadPersonDto
-
-/// Simplified person DTO for offline storage
+/// Simplified person DTO for offline storage.
 struct DownloadPersonDto: Codable, Hashable, Identifiable {
-
     let id: String
     let name: String
     let role: String?
@@ -161,11 +151,8 @@ struct DownloadPersonDto: Codable, Hashable, Identifiable {
     let primaryImagePath: String?
 }
 
-// MARK: - DownloadStudioDto
-
-/// Simplified studio DTO for offline storage
+/// Simplified studio DTO for offline storage.
 struct DownloadStudioDto: Codable, Hashable, Identifiable {
-
     let id: String
     let name: String
 }
@@ -174,8 +161,7 @@ struct DownloadStudioDto: Codable, Hashable, Identifiable {
 
 extension DownloadItemDto {
 
-    /// Creates a DownloadItemDto from a StoredDownloadItem (primary initializer)
-    /// - Parameter stored: The StoredDownloadItem containing the full item data
+    /// Creates a DownloadItemDto from a StoredDownloadItem.
     init(from stored: StoredDownloadItem) {
         let item = stored.item
 
@@ -234,17 +220,12 @@ extension DownloadPersonDto {
     }
 }
 
-// MARK: - DownloadStudioDto + Initialization
-
 extension DownloadStudioDto {
-
     init(from studio: NameGuidPair) {
         self.id = studio.id ?? UUID().uuidString
         self.name = studio.name ?? L10n.unknown
     }
 }
-
-// MARK: - DownloadItemDto + Display Helpers
 
 extension DownloadItemDto {
 

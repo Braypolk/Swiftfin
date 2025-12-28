@@ -138,15 +138,11 @@ extension DownloadItemView {
 
                     header
 
-                    // MARK: Overview
-
                     ItemView.OverviewView(item: viewModel.item)
                         .overviewLineLimit(4)
                         .padding(.horizontal)
 
                     RowDivider()
-
-                    // MARK: Content
 
                     content
                         .edgePadding(.bottom)

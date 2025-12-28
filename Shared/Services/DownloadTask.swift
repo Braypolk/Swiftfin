@@ -14,11 +14,7 @@ import Get
 import JellyfinAPI
 import Logging
 
-// MARK: - DownloadTask
-
 class DownloadTask: NSObject, ObservableObject, Identifiable {
-
-    // MARK: - State
 
     enum State: Hashable {
         case pending
@@ -79,22 +75,16 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
 
     private var downloadTask: Task<Void, Never>?
 
-    /// The background download task identifier for media downloads
     private var backgroundDownloadTaskID: String?
 
-    /// Stored resume data if download was paused
     private var resumeData: Data?
 
-    /// The download URL for the current media (needed for resume info)
     private var currentDownloadURL: URL?
 
-    /// The original item being downloaded
     let item: BaseItemDto
 
-    /// The queue item representing this download
     let queueItem: DownloadQueueItem
 
-    /// Completion handler called when download finishes
     var onComplete: ((Result<StoredDownloadItem, Error>) -> Void)?
 
     var id: String {
@@ -111,7 +101,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         item.downloadFolder?.appendingPathComponent("Metadata")
     }
 
-    /// Relative path from downloads root to this item's folder
+    /// Relative path from downloads root to this item's folder.
     var relativeFolderPath: String? {
         guard let downloadFolder = item.downloadFolder else { return nil }
         let downloadsPath = URL.downloads.path
@@ -164,7 +154,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
                 self.stage = .preparing
             }
 
-            // Delete any existing partial download only if starting fresh
+            // Delete any existing partial download if starting fresh
             if self.resumeData == nil {
                 deleteRootFolder()
             }
@@ -175,7 +165,6 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
                     try FileManager.default.checkSpace(requiredBytes: estimatedSize)
                 }
 
-                // Download based on whether this is metadata-only
                 if queueItem.isMetadataOnly {
                     try await downloadMetadataOnly()
                 } else {
@@ -187,12 +176,12 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
                     self.stage = .completed
                 }
 
-                // Create StoredDownloadItem and notify completion
+                // Create stored item and notify completion
                 let downloadedItem = createStoredDownloadItem()
                 onComplete?(.success(downloadedItem))
 
             } catch is CancellationError {
-                // If we paused, this cancellation is expected and state is already paused
+                // If paused, cancellation is expected
                 if await MainActor.run(body: { self.state == .paused }) {
                     return
                 }
@@ -203,8 +192,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
                 onComplete?(.failure(DownloadError.cancelled))
 
             } catch {
-                // If the state is paused, we expect a cancellation error but should not
-                // transition to .error state. The resume data handler set the state to .paused.
+                // If paused, we expect periodic cancellation but shouldn't transition to error
                 if await MainActor.run(body: { self.state == .paused }) {
                     return
                 }
@@ -226,20 +214,20 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
             state = .paused
             logger.trace("Pausing download for: \(item.displayTitle)")
 
-            // If we have a background download task, pause with resume data
+            // If background download task exists, pause with resume data
             if let taskID = backgroundDownloadTaskID {
                 BackgroundDownloadSession.shared.pauseDownload(itemID: taskID) { [weak self] resumeData in
                     guard let self else { return }
                     self.handlePauseWithResumeData(resumeData)
                 }
             } else {
-                // For non-media downloads (images, metadata), just cancel
+                // Non-media downloads (images, metadata) just cancel
                 downloadTask?.cancel()
             }
         }
     }
 
-    /// Handle pause completion with optional resume data
+    /// Handle pause completion with resume data.
     private func handlePauseWithResumeData(_ data: Data?) {
         self.resumeData = data
         self.state = .paused
@@ -279,7 +267,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         download()
     }
 
-    /// Resume download from previously stored resume data
+    /// Resume from previously stored data.
     func resumeFromPaused() {
         // Try to load resume info from storage
         if let resumeInfo = StoredValues[.User.downloadResumeInfo(itemID: id)] {
@@ -291,8 +279,6 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         download()
     }
 
-    // MARK: - Full Download (Media + Images + Metadata)
-
     private func downloadFull() async throws {
         try await downloadMedia()
         await downloadBackdropImage()
@@ -300,8 +286,6 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         await downloadLogoImage()
         saveMetadata()
     }
-
-    // MARK: - Metadata Only Download (Images + Metadata, no media)
 
     private func downloadMetadataOnly() async throws {
         await downloadBackdropImage()
@@ -320,7 +304,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
             self.stage = .downloadingMedia(progress: 0)
         }
 
-        // Build the download URL
+        // Build download URL
         let request = Paths.getDownload(itemID: itemID)
         guard let downloadURL = userSession.client.fullURL(with: request, queryAPIKey: true) else {
             throw DownloadError.networkError("Failed to build download URL")
@@ -338,7 +322,6 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
             headers["Authorization"] = "MediaBrowser Token=\"\(accessToken)\""
         }
 
-        // Check if we have resume data to continue from
         if let resumeData = await MainActor.run(body: { self.resumeData }) {
             try await downloadMediaWithResumeData(resumeData, downloadFolder: downloadFolder, itemID: itemID)
         } else {
@@ -346,7 +329,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    /// Download media using resume data
+    /// Download media using resume data.
     private func downloadMediaWithResumeData(_ resumeData: Data, downloadFolder: URL, itemID: String) async throws {
         // Set ID to enable pause functionality
         self.backgroundDownloadTaskID = itemID
@@ -373,7 +356,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    /// Download media from scratch
+    /// Download media from scratch.
     private func downloadMediaFresh(url: URL, headers: [String: String], downloadFolder: URL, itemID: String) async throws {
         // Set ID to enable pause functionality
         self.backgroundDownloadTaskID = itemID
@@ -395,7 +378,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    /// Centralized progress update logic
+    /// Update progress and state.
     private func updateProgress(bytesWritten: Int64, totalBytes: Int64) {
         // Don't update state if we are paused/cancelled/error
         // canRetry covers .paused, .cancelled, and .error
@@ -407,8 +390,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         self.totalBytes = totalBytes
         self.state = .downloading(progress: progress)
 
-        // Only update stage progress if we are in the downloadingMedia stage
-        // For images/metadata, we want to preserve the specific stage (e.g. .downloadingBackdropImage)
+        // Only update stage progress if downloading media
         if case .downloadingMedia = stage {
             self.stage = .downloadingMedia(progress: progress)
         }
@@ -453,7 +435,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    // MARK: - Image Downloads
+    // MARK: - Images & Metadata
 
     private func downloadBackdropImage() async {
         guard let type = item.type else { return }
@@ -517,7 +499,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
             self.stage = .downloadingLogoImage
         }
 
-        // Logo is mainly for movies and series
+        // Logo is for movies and series
         guard type == .movie || type == .series else { return }
 
         guard let url = item.imageSource(.logo, maxWidth: 400).url else { return }
@@ -580,7 +562,7 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    // MARK: - File Access
+    // MARK: - File Helpers
 
     func getImageURL(name: String) -> URL? {
         do {
@@ -607,8 +589,6 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
             return nil
         }
     }
-
-    // MARK: - StoredDownloadItem Creation
 
     private func createStoredDownloadItem() -> StoredDownloadItem {
         // Build relative paths for stored data

@@ -11,11 +11,7 @@ import JellyfinAPI
 
 extension DownloadItemDto {
 
-    // MARK: Item Images
-
     /// Returns the local file URL for the specified image type.
-    /// - Note: maxWidth, maxHeight, and quality parameters are ignored for local files
-    ///   but kept for API consistency with BaseItemDto.
     func imageURL(
         _ type: ImageType,
         maxWidth: CGFloat? = nil,
@@ -26,8 +22,6 @@ extension DownloadItemDto {
     }
 
     /// Returns an ImageSource for the specified image type.
-    /// - Note: maxWidth, maxHeight, and quality parameters are ignored for local files
-    ///   but kept for API consistency with BaseItemDto.
     func imageSource(
         _ type: ImageType,
         maxWidth: CGFloat? = nil,
@@ -38,12 +32,7 @@ extension DownloadItemDto {
         return ImageSource(url: url)
     }
 
-    // MARK: Series Images
-
     /// Returns the local file URL for the series image of the specified type.
-    /// Used primarily for episodes to retrieve their parent series images.
-    /// - Note: maxWidth, maxHeight, and quality parameters are ignored for local files
-    ///   but kept for API consistency with BaseItemDto.
     func seriesImageURL(
         _ type: ImageType,
         maxWidth: CGFloat? = nil,
@@ -55,9 +44,6 @@ extension DownloadItemDto {
     }
 
     /// Returns an ImageSource for the series image of the specified type.
-    /// Used primarily for episodes to retrieve their parent series images.
-    /// - Note: maxWidth, maxHeight, and quality parameters are ignored for local files
-    ///   but kept for API consistency with BaseItemDto.
     func seriesImageSource(
         _ type: ImageType,
         maxWidth: CGFloat? = nil,
@@ -67,8 +53,6 @@ extension DownloadItemDto {
         let url = seriesImageURL(type, maxWidth: maxWidth, maxHeight: maxHeight, quality: quality)
         return ImageSource(url: url)
     }
-
-    // MARK: Private Helpers
 
     private func _imageURL(_ type: ImageType) -> URL? {
         let relativePath: String?

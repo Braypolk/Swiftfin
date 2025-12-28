@@ -11,8 +11,6 @@ import Factory
 import JellyfinAPI
 import SwiftUI
 
-// MARK: - DownloadPagingLibraryView
-
 struct DownloadPagingLibraryView: View {
 
     @Default(.Customization.Library.displayType)
@@ -77,7 +75,6 @@ struct DownloadPagingLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    // Show offline mode toggle if experimental downloads is enabled
                     if experimentalDownloads {
                         Button {
                             let wasOffline = offlineMode
@@ -207,7 +204,6 @@ struct DownloadPagingLibraryView: View {
     private var libraryContentView: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // Storage info header
                 storageInfoHeader
 
                 // Grid of downloaded items
@@ -291,8 +287,6 @@ struct DownloadPagingLibraryView: View {
     }
 }
 
-// MARK: - DownloadItemPosterView
-
 struct DownloadItemPosterView: View {
 
     let item: DownloadItemDto
@@ -300,7 +294,6 @@ struct DownloadItemPosterView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
-                // Poster image
                 posterImage
                     .posterStyle(item.preferredPosterDisplayType)
                     .posterShadow()
@@ -317,7 +310,6 @@ struct DownloadItemPosterView: View {
                     .padding(8)
             }
 
-            // Title
             if item.showTitle {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.displayTitle)
@@ -344,15 +336,12 @@ struct DownloadItemPosterView: View {
     }
 }
 
-// MARK: - DownloadItemRowView
-
 struct DownloadItemRowView: View {
 
     let item: DownloadItemDto
 
     var body: some View {
         HStack(spacing: 12) {
-            // Thumbnail
             ImageView(item.portraitImageSources())
                 .failure {
                     SystemImageContentView(systemName: item.systemImage)

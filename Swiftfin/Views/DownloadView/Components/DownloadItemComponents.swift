@@ -13,8 +13,6 @@ import SwiftUI
 
 extension DownloadItemView {
 
-    // MARK: - DownloadPlayButton
-
     struct DownloadPlayButton: View {
 
         @Default(.accentColor)
@@ -74,8 +72,6 @@ extension DownloadItemView {
         }
     }
 
-    // MARK: - DownloadActionButtonHStack
-
     struct DownloadActionButtonHStack: View {
 
         @Injected(\.downloadManager)
@@ -98,14 +94,11 @@ extension DownloadItemView {
         var body: some View {
             HStack(alignment: .center, spacing: 10) {
 
-                // MARK: - Toggle Played
-
                 if item.type == .movie || item.type == .episode || item.type == .video {
                     let isCheckmarkSelected = item.played
 
                     Button {
                         // TODO: Implement toggle played for downloaded items
-                        // This would need to update the local metadata
                     } label: {
                         Image(systemName: "checkmark")
                     }
@@ -116,8 +109,6 @@ extension DownloadItemView {
                         view.aspectRatio(1, contentMode: .fit)
                     }
                 }
-
-                // MARK: - Toggle Favorite
 
                 let isHeartSelected = item.isFavorite
 
@@ -133,8 +124,6 @@ extension DownloadItemView {
                 .if(!equalSpacing) { view in
                     view.aspectRatio(1, contentMode: .fit)
                 }
-
-                // MARK: - Delete Download
 
                 Button {
                     showingDeleteConfirmation = true
@@ -166,8 +155,6 @@ extension DownloadItemView {
         }
     }
 
-    // MARK: - DownloadAboutView
-
     struct DownloadAboutView: View {
 
         @ObservedObject
@@ -185,9 +172,7 @@ extension DownloadItemView {
         }
     }
 
-    // MARK: - DownloadEpisodeCard
-
-    /// Episode card for downloaded content that plays from local storage
+    /// Episode card for downloaded content that plays from local storage.
     struct DownloadEpisodeCard: View {
 
         @Injected(\.downloadManager)
@@ -249,7 +234,6 @@ extension DownloadItemView {
                     subHeader: episode.episodeLocator ?? .emptyDash,
                     content: episodeContent
                 ) {
-                    // Navigate to download item detail view
                     if let downloadedItem = downloadManager.downloadedEpisode(for: episode) {
                         router.route(to: .downloadItem(item: downloadedItem))
                     }

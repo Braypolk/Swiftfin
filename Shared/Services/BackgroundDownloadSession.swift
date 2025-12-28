@@ -11,10 +11,7 @@ import Factory
 import Foundation
 import Logging
 
-// MARK: - BackgroundDownloadSession
-
 /// Singleton service managing background URLSession for downloads.
-/// Supports pause/resume with resume data and continues downloads when app is backgrounded.
 class BackgroundDownloadSession: NSObject, ObservableObject {
 
     // MARK: - Singleton
@@ -50,15 +47,12 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
     /// Resume data callbacks per item ID (called when download is cancelled with resume data)
     private var resumeDataCallbacks: [String: (Data?) -> Void] = [:]
 
-    /// Published progress updates
     @Published
     private(set) var downloadProgress: [String: Double] = [:]
 
-    /// Published bytes downloaded
     @Published
     private(set) var bytesDownloaded: [String: Int64] = [:]
 
-    /// Published total bytes
     @Published
     private(set) var totalBytes: [String: Int64] = [:]
 
@@ -87,14 +81,6 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
 
     // MARK: - Public Methods
 
-    /// Start a download for an item
-    /// - Parameters:
-    ///   - url: The URL to download from
-    ///   - itemID: The unique item ID
-    ///   - headers: Optional HTTP headers (e.g., authorization)
-    ///   - progress: Progress callback (progress, bytesDownloaded, totalBytes)
-    ///   - completion: Completion callback with downloaded file URL or error
-    /// - Returns: The URLSessionDownloadTask
     @discardableResult
     func startDownload(
         url: URL,
@@ -118,13 +104,6 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
         return task
     }
 
-    /// Resume a download using resume data
-    /// - Parameters:
-    ///   - resumeData: The resume data from a previous download
-    ///   - itemID: The unique item ID
-    ///   - progress: Progress callback
-    ///   - completion: Completion callback
-    /// - Returns: The URLSessionDownloadTask
     @discardableResult
     func resumeDownload(
         resumeData: Data,
@@ -144,10 +123,7 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
         return task
     }
 
-    /// Pause a download and get resume data
-    /// - Parameters:
-    ///   - itemID: The item ID to pause
-    ///   - completion: Callback with resume data (nil if not resumable)
+    /// Pause a download and get resume data.
     func pauseDownload(itemID: String, completion: @escaping (Data?) -> Void) {
         guard let task = activeDownloads[itemID] else {
             logger.warning("No active download found for item \(itemID)")
@@ -172,8 +148,7 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
         }
     }
 
-    /// Cancel a download without resume data
-    /// - Parameter itemID: The item ID to cancel
+    /// Cancel a download without resume data.
     func cancelDownload(itemID: String) {
         guard let task = activeDownloads[itemID] else {
             logger.warning("No active download found for item \(itemID)")
@@ -185,7 +160,7 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
         logger.info("Cancelled download for item \(itemID)")
     }
 
-    /// Delete the temporary file associated with resume data
+    /// Delete the temporary file associated with resume data.
     func deleteResumeData(_ resumeData: Data) {
         // Create a task with the resume data and immediately cancel it.
         // This triggers the system to clean up the temporary file.
@@ -200,7 +175,7 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
         activeDownloads[itemID]
     }
 
-    /// Store completion handler from AppDelegate for background events
+    /// Store completion handler from AppDelegate for background events.
     func storeCompletionHandler(_ handler: @escaping () -> Void) {
         backgroundCompletionHandler = handler
         logger.info("Stored background completion handler")
@@ -223,7 +198,7 @@ class BackgroundDownloadSession: NSObject, ObservableObject {
     private func reconnectToExistingTasks() {
         session.getTasksWithCompletionHandler { [weak self] _, _, downloadTasks in
             for task in downloadTasks {
-                // Try to extract item ID from task description or stored mapping
+                // Try to extract item ID from task description
                 if let itemID = task.taskDescription {
                     self?.activeDownloads[itemID] = task
                     self?.taskToItemID[task.taskIdentifier] = itemID
@@ -269,7 +244,7 @@ extension BackgroundDownloadSession: URLSessionDownloadDelegate {
             return
         }
 
-        // Get file extension from the response Content-Type header
+        // Determine file extension from Content-Type if possible
         var fileExtension = ""
         if let response = downloadTask.response as? HTTPURLResponse,
            let contentType = response.allHeaderFields["Content-Type"] as? String

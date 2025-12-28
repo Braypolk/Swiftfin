@@ -10,9 +10,7 @@ import Defaults
 import Foundation
 import JellyfinAPI
 
-/// SeasonItemViewModel for downloaded content that loads episodes from local files
-/// instead of making API calls
-/// Since SeasonItemViewModel is final, this is a separate class with the same interface
+/// SeasonItemViewModel for downloaded content that loads episodes from local files.
 final class DownloadSeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Identifiable {
 
     let season: BaseItemDto

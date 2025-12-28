@@ -15,14 +15,10 @@ import JellyfinAPI
 import OrderedCollections
 import SwiftUI
 
-// MARK: - DownloadPagingLibraryViewModel
-
 /// ViewModel for browsing downloaded content with filtering and sorting support
 @MainActor
 @Stateful
 final class DownloadPagingLibraryViewModel: ViewModel {
-
-    // MARK: - Action
 
     @CasePathable
     enum Action {
@@ -33,16 +29,14 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         var transition: Transition {
             switch self {
             case .refresh:
-                .to(.content) // Will be updated to .empty in applyFiltersAndSort if needed
+                .to(.content)
             case .filter:
-                .none // No state change, just update elements
+                .none
             case .delete:
-                .none // No state change, just remove item
+                .none
             }
         }
     }
-
-    // MARK: - State
 
     enum State: Hashable {
         case initial
@@ -60,32 +54,24 @@ final class DownloadPagingLibraryViewModel: ViewModel {
     @Published
     var elements: IdentifiedArray<Int, DownloadItemDto> = IdentifiedArray([], id: \.unwrappedIDHashOrZero, uniquingIDsWith: { x, _ in x })
 
-    /// Filter view model for local filtering
     @Published
     var filterViewModel: DownloadFilterViewModel = DownloadFilterViewModel()
 
-    /// Current download task (if any)
     @Published
     var currentDownload: DownloadTask?
 
-    /// Download queue
     @Published
     var queue: [DownloadQueueItem] = []
 
-    /// Item states
     @Published
     var itemStates: [String: DownloadItemState] = [:]
-
-    // MARK: - Initialization
 
     override nonisolated init() {
         super.init()
 
-        // Setup observers and initial load on main actor
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.setupObservers()
-            // Call refresh action directly
             self._refresh()
         }
     }
@@ -119,7 +105,6 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             }
             .store(in: &cancellables)
 
-        // Observe filter changes
         filterViewModel.$currentFilters
             .dropFirst()
             .debounce(for: 0.3, scheduler: RunLoop.main)
@@ -131,20 +116,16 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             .store(in: &cancellables)
     }
 
-    // MARK: - Stateful Actions
-
     @Function(\Action.Cases.refresh)
     private func _refresh() {
         let items = downloadManager.completedItems
         filterViewModel.updateAvailableFilters(from: items)
         applyFiltersAndSort(to: items)
-        // State will be updated by applyFiltersAndSort
     }
 
     @Function(\Action.Cases.filter)
     private func _filter() {
         applyFiltersAndSort(to: downloadManager.completedItems)
-        // State will be updated by applyFiltersAndSort
     }
 
     @Function(\Action.Cases.delete)
@@ -154,6 +135,7 @@ final class DownloadPagingLibraryViewModel: ViewModel {
 
     // MARK: - Public Methods (for view access)
 
+    // BRAY-TODO: is this needed?
     func performRefresh() {
         _refresh()
     }
@@ -164,12 +146,10 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         var filteredItems = items
         let filters = filterViewModel.currentFilters
 
-        // Filter by item type
         if !filters.itemTypes.isEmpty {
             filteredItems = filteredItems.filter { filters.itemTypes.contains($0.type) }
         }
 
-        // Filter by genre
         if !filters.genres.isEmpty {
             let genreValues = Set(filters.genres.map(\.value))
             filteredItems = filteredItems.filter { item in
@@ -178,7 +158,6 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             }
         }
 
-        // Filter by year
         if !filters.years.isEmpty {
             let yearValues = Set(filters.years.compactMap { Int($0.value) })
             filteredItems = filteredItems.filter { item in
@@ -187,7 +166,6 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             }
         }
 
-        // Filter by tag
         if !filters.tags.isEmpty {
             let tagValues = Set(filters.tags.map(\.value))
             filteredItems = filteredItems.filter { item in
@@ -196,13 +174,9 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             }
         }
 
-        // Apply sorting
         filteredItems = applySorting(to: filteredItems, sortBy: filters.sortBy, sortOrder: filters.sortOrder)
-
-        // Update elements
         elements = IdentifiedArray(filteredItems, id: \.unwrappedIDHashOrZero, uniquingIDsWith: { x, _ in x })
 
-        // Update state based on elements
         if elements.isEmpty {
             state = .empty
         } else {
@@ -266,8 +240,6 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         }
     }
 
-    // MARK: - Computed Properties
-
     /// Total size of all downloads (calculated from disk, not from elements)
     var totalDownloadSize: Int64 {
         FileManager.default.downloadsDirectorySize() ?? 0
@@ -286,7 +258,6 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         return FileManager.default.formatBytes(available)
     }
 
-    /// Storage summary
     var storageSummary: String {
         FileManager.default.storageSummary()
     }
@@ -300,41 +271,32 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         let totalSize: Int64
         let bytesDownloaded: Int64
         let progress: Double
-        let isMainDownload: Bool // True if this group contains the currentDownload
+        let isMainDownload: Bool
     }
 
     var groupedQueue: [DownloadQueueGroup] {
         var allItems: [DownloadQueueItem] = []
 
-        // Add current download if it exists
         let currentID = currentDownload?.id
         if let current = currentDownload {
             allItems.append(current.queueItem)
         }
 
-        // Add all items from the queue, ensuring no duplication with current download
         allItems.append(contentsOf: queue.filter { $0.id != currentID })
 
-        // Group items by groupId (falling back to id)
         let grouped = Dictionary(grouping: allItems) { $0.groupId ?? $0.id }
 
         return grouped.compactMap { groupId, items in
-            // Find the "main" item in the group (the playable one)
             let mainItem = items.first(where: { !$0.isMetadataOnly }) ?? items.first
             guard let mainItem = mainItem else { return nil }
 
-            // Calculate group total size
-            // Use the stored groupTotalSize if available, otherwise sum what we have
             let currentItemsTotalSize = items.reduce(Int64(0)) { $0 + ($1.size ?? 0) }
             let totalGroupSize = max(Int64(0), mainItem.groupTotalSize ?? currentItemsTotalSize)
 
-            // Size of items in this group that have already been fully downloaded
             let completedSizeInBatch = max(Int64(0), totalGroupSize - currentItemsTotalSize)
 
-            // Calculate downloaded bytes: completed items + current active item progress
             var totalBytesDownloaded: Int64 = completedSizeInBatch
 
-            // Add bytes from the active download if it belongs to this group
             if let current = currentDownload, items.contains(where: { $0.id == current.id }) {
                 totalBytesDownloaded += current.bytesDownloaded
             }
@@ -351,11 +313,9 @@ final class DownloadPagingLibraryViewModel: ViewModel {
                 isMainDownload: currentID != nil && items.contains(where: { $0.id == currentID })
             )
         }.sorted { g1, g2 in
-            // Keep current download at the top
             if g1.isMainDownload != g2.isMainDownload {
                 return g1.isMainDownload
             }
-            // Otherwise sort by added date of the first item
             let d1 = g1.items.first?.addedAt ?? Date.distantPast
             let d2 = g2.items.first?.addedAt ?? Date.distantPast
             return d1 < d2
@@ -363,9 +323,6 @@ final class DownloadPagingLibraryViewModel: ViewModel {
     }
 }
 
-// MARK: - DownloadFilterViewModel
-
-/// Filter ViewModel specifically for downloaded content
 class DownloadFilterViewModel: ObservableObject {
 
     @Published
@@ -388,7 +345,6 @@ class DownloadFilterViewModel: ObservableObject {
     }
 
     func updateAvailableFilters(from items: [DownloadItemDto]) {
-        // Extract unique genres
         var genreSet = Set<String>()
         for item in items {
             if let genres = item.genres {
@@ -397,7 +353,6 @@ class DownloadFilterViewModel: ObservableObject {
         }
         availableGenres = genreSet.sorted().map { ItemGenre(stringLiteral: $0) }
 
-        // Extract unique years
         var yearSet = Set<Int>()
         for item in items {
             if let year = item.productionYear {
@@ -406,7 +361,6 @@ class DownloadFilterViewModel: ObservableObject {
         }
         availableYears = yearSet.sorted(by: >).map { ItemYear(integerLiteral: $0) }
 
-        // Extract unique tags
         var tagSet = Set<String>()
         for item in items {
             if let tags = item.tags {
@@ -415,7 +369,6 @@ class DownloadFilterViewModel: ObservableObject {
         }
         availableTags = tagSet.sorted().map { ItemTag(stringLiteral: $0) }
 
-        // Extract unique item types
         availableItemTypes = Array(Set(items.map(\.type))).sorted { $0.rawValue < $1.rawValue }
     }
 
@@ -424,9 +377,6 @@ class DownloadFilterViewModel: ObservableObject {
     }
 }
 
-// MARK: - DownloadFilterCollection
-
-/// Filter collection for downloaded content
 struct DownloadFilterCollection: Hashable {
 
     var genres: [ItemGenre]

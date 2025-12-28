@@ -157,22 +157,18 @@ extension DownloadItemDto: Poster {
 
 extension DownloadItemDto {
 
-    /// Returns the local URL for the logo image if available
     var logoImageURL: URL? {
         imageURL(.logo)
     }
 
-    /// Returns the local URL for the primary image if available
     var primaryImageURL: URL? {
         imageURL(.primary)
     }
 
-    /// Returns the local URL for the backdrop image if available
     var backdropImageURL: URL? {
         imageURL(.backdrop)
     }
 
-    /// Returns the local URL for the media file if available
     var mediaURL: URL? {
         guard let mediaPath = mediaPath else { return nil }
         return URL.downloads.appendingPathComponent(mediaPath)

@@ -11,8 +11,6 @@ import Factory
 import JellyfinAPI
 import SwiftUI
 
-// MARK: - DownloadItemView
-
 struct DownloadItemView: View {
 
     @Injected(\.downloadManager)
@@ -45,8 +43,6 @@ struct DownloadItemView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // MARK: - Content View Selection
-
     @ViewBuilder
     private var scrollContentView: some View {
         switch item.type {
@@ -60,8 +56,6 @@ struct DownloadItemView: View {
             DownloadItemView.DownloadSimpleItemContentView(viewModel: viewModel)
         }
     }
-
-    // MARK: - Scroll View Selection
 
     private func downloadScrollView<Content: View>(
         item: DownloadItemDto,

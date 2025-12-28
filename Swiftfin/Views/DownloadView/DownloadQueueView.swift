@@ -10,8 +10,6 @@ import Factory
 import JellyfinAPI
 import SwiftUI
 
-// MARK: - DownloadQueueView
-
 struct DownloadQueueView: View {
 
     @Environment(\.dismiss)
@@ -25,7 +23,6 @@ struct DownloadQueueView: View {
 
     var body: some View {
         List {
-            // Grouped queue
             let groups = viewModel.groupedQueue
 
             if let currentGroup = groups.first(where: { $0.isMainDownload }) {
@@ -57,7 +54,6 @@ struct DownloadQueueView: View {
                 }
             }
 
-            // Empty state
             if viewModel.currentDownload == nil && viewModel.queue.isEmpty {
                 Section {
                     VStack(spacing: 12) {
@@ -88,8 +84,6 @@ struct DownloadQueueView: View {
         }
     }
 }
-
-// MARK: - CurrentDownloadRow
 
 struct CurrentDownloadRow: View {
 
@@ -128,8 +122,6 @@ struct CurrentDownloadRow: View {
                     }
                 }
             }
-
-            // Progress bar
             VStack(alignment: .leading, spacing: 4) {
                 ProgressView(value: group.progress)
                     .progressViewStyle(.linear)
@@ -198,8 +190,6 @@ struct CurrentDownloadRow: View {
     }
 }
 
-// MARK: - DownloadQueueRow
-
 struct DownloadQueueRow: View {
 
     @Injected(\.downloadManager)
@@ -215,16 +205,13 @@ struct DownloadQueueRow: View {
                     .font(.headline)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    // Item count removed as requested
-                }
+                HStack(spacing: 8) {}
             }
 
             Spacer()
 
             if group.items.contains(where: { downloadManager.itemStates[$0.id] == .paused }) {
                 Button {
-                    // Resume the first paused item in the group
                     if let pausedItem = group.items.first(where: { downloadManager.itemStates[$0.id] == .paused }) {
                         downloadManager.resume(itemID: pausedItem.id)
                     }
@@ -257,7 +244,6 @@ struct DownloadQueueRow: View {
 
     @ViewBuilder
     private var stateIndicator: some View {
-        // Find the "most active" state in the group
         let states = group.items.compactMap { downloadManager.itemStates[$0.id] }
 
         if states.contains(.downloading) {

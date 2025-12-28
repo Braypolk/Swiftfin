@@ -14,16 +14,13 @@ import IdentifiedCollections
 import JellyfinAPI
 import SwiftUI
 
-/// Protocol that both ItemViewModel and DownloadItemViewModel conform to
-/// for use with components like AttributesHStack
+/// Protocol for use with components like AttributesHStack.
 protocol ItemViewModelProtocol: ObservableObject {
     var item: BaseItemDto { get }
     var selectedMediaSource: MediaSourceInfo? { get }
 }
 
-/// Type-erased wrapper for season view models
-/// Allows both ServerSeasonItemViewModel and DownloadSeasonItemViewModel to be stored together
-/// This is the unified SeasonItemViewModel that works for both online and downloaded content
+/// Unified SeasonItemViewModel that works for both online and downloaded content.
 final class SeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Identifiable {
     private let _season: BaseItemDto
     private let _id: String?
@@ -61,15 +58,14 @@ final class SeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Identifiab
     }
 }
 
-/// Protocol for view models that support series with seasons
-/// Used by SeriesEpisodeSelector to work with both online and downloaded series
+/// Protocol for view models that support series with seasons.
 protocol SeriesViewModelProtocol: ItemViewModelProtocol {
     var seasons: IdentifiedArrayOf<SeasonItemViewModel> { get }
     var playButtonItem: BaseItemDto? { get }
 }
 
 /// A lightweight view model for downloaded items that provides the same interface
-/// as ItemViewModel for use with existing components like AttributesHStack
+/// as ItemViewModel for use with existing components.
 class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesViewModelProtocol {
 
     @Published
@@ -111,12 +107,12 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
         self.playButtonItem = baseItem.isPlayable ? baseItem : nil
         self.selectedMediaSource = baseItem.mediaSources?.first
 
-        // Load seasons if this is a series
         if storedItem.type == .series {
             loadSeasons()
         }
     }
 
+    // BRAY-TODO: is this needed?
     /// Convenience initializer for backward compatibility with DownloadItemDto
     /// Note: This will load the StoredDownloadItem from CoreStore
     convenience init(downloadItem: DownloadItemDto) {
@@ -163,8 +159,6 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
             self.init(storedItem: stored)
         }
     }
-
-    // MARK: - Load Seasons
 
     private func loadSeasons() {
         loadSeasonsTask?.cancel()
@@ -216,10 +210,7 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
         return seasons
     }
 
-    // MARK: - Download Progress
-
-    /// Get download progress for seasons and series
-    /// Returns a tuple of (downloaded: Int, total: Int) or nil if not applicable
+    /// Get download progress for seasons and series (downloaded, total).
     var downloadProgress: (downloaded: Int, total: Int)? {
         guard downloadItem.type == .season || downloadItem.type == .series else {
             return nil
