@@ -21,6 +21,9 @@ struct DownloadPagingLibraryView: View {
     @Default(.Customization.Library.posterType)
     private var libraryPosterType
 
+    @Default(.Customization.Library.listColumnCount)
+    private var defaultListColumnCount
+
     @Default(.offlineMode)
     private var offlineMode
 
@@ -46,7 +49,27 @@ struct DownloadPagingLibraryView: View {
 
     init(viewModel: DownloadPagingLibraryViewModel? = nil) {
         self._viewModel = StateObject(wrappedValue: viewModel ?? DownloadPagingLibraryViewModel())
+
+        let initialPosterType = Defaults[.Customization.Library.posterType]
+        let initialDisplayType = Defaults[.Customization.Library.displayType]
+        let initialListColumnCount = Defaults[.Customization.Library.listColumnCount]
+
+        if UIDevice.isPhone {
+            _columns = State(initialValue: Self.phoneLayout(
+                posterType: initialPosterType,
+                viewType: initialDisplayType
+            ))
+        } else {
+            _columns = State(initialValue: Self.padLayout(
+                posterType: initialPosterType,
+                viewType: initialDisplayType,
+                listColumnCount: initialListColumnCount
+            ))
+        }
     }
+
+    @State
+    private var columns: [GridItem]
 
     var body: some View {
         contentView
@@ -85,11 +108,66 @@ struct DownloadPagingLibraryView: View {
             .onFirstAppear {
                 viewModel.performRefresh()
             }
-            .refreshable {
-                await MainActor.run {
-                    viewModel.performRefresh()
-                }
+            .onChange(of: libraryDisplayType) { newValue in
+                updateLayout(displayType: newValue, posterType: libraryPosterType)
             }
+            .onChange(of: libraryPosterType) { newValue in
+                updateLayout(displayType: libraryDisplayType, posterType: newValue)
+            }
+            .onChange(of: defaultListColumnCount) { newValue in
+                updateLayout(displayType: libraryDisplayType, posterType: libraryPosterType, listColumnCount: newValue)
+            }
+    }
+
+    private func updateLayout(
+        displayType: LibraryDisplayType,
+        posterType: PosterDisplayType,
+        listColumnCount: Int? = nil
+    ) {
+        let columnsCount = listColumnCount ?? defaultListColumnCount
+        if UIDevice.isPhone {
+            columns = Self.phoneLayout(
+                posterType: posterType,
+                viewType: displayType
+            )
+        } else {
+            columns = Self.padLayout(
+                posterType: posterType,
+                viewType: displayType,
+                listColumnCount: columnsCount
+            )
+        }
+    }
+
+    private static func padLayout(
+        posterType: PosterDisplayType,
+        viewType: LibraryDisplayType,
+        listColumnCount: Int
+    ) -> [GridItem] {
+        switch (posterType, viewType) {
+        case (.landscape, .grid):
+            return [GridItem(.adaptive(minimum: 200), spacing: 8)]
+        case (.portrait, .grid), (.square, .grid):
+            return [GridItem(.adaptive(minimum: 150), spacing: 8)]
+        case (_, .list):
+            return Array(repeating: GridItem(.flexible(), spacing: 0), count: listColumnCount)
+        }
+    }
+
+    private static func phoneLayout(
+        posterType: PosterDisplayType,
+        viewType: LibraryDisplayType
+    ) -> [GridItem] {
+        switch (posterType, viewType) {
+        case (.landscape, .grid):
+            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 2)
+        case (.portrait, .grid):
+            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+        case (.square, .grid):
+            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+        case (_, .list):
+            return [GridItem(.flexible(), spacing: 0)]
+        }
     }
 
     @ViewBuilder
@@ -162,15 +240,13 @@ struct DownloadPagingLibraryView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
-        .padding(.horizontal)
+        .padding(.horizontal, EdgeInsets.edgePadding)
         .padding(.vertical, 12)
     }
 
     @ViewBuilder
     private var gridContent: some View {
-        let columns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
-
-        LazyVGrid(columns: columns, spacing: 16) {
+        LazyVGrid(columns: columns, spacing: 8) {
             ForEach(viewModel.elements) { item in
                 Button {
                     router.route(to: .downloadItem(item: item))
@@ -187,7 +263,7 @@ struct DownloadPagingLibraryView: View {
                 }
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, EdgeInsets.edgePadding)
     }
 
     @ViewBuilder
@@ -247,7 +323,7 @@ struct DownloadItemPosterView: View {
                     Text(item.displayTitle)
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .lineLimit(2)
+                        .lineLimit(1, reservesSpace: true)
 
                     if let subtitle = item.subtitle {
                         Text(subtitle)
