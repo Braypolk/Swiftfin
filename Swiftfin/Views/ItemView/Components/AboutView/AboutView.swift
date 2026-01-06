@@ -20,7 +20,7 @@ import SwiftUI
 
 extension ItemView {
 
-    struct AboutView: View {
+    struct AboutView<ViewModel: ItemViewModelProtocol>: View {
 
         private enum AboutViewItem: Identifiable {
             case image
@@ -43,7 +43,7 @@ extension ItemView {
         }
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
 
         @State
         private var contentSize: CGSize = .zero
@@ -65,7 +65,7 @@ extension ItemView {
             return items
         }
 
-        init(viewModel: ItemViewModel) {
+        init(viewModel: ViewModel) {
             self.viewModel = viewModel
         }
 

@@ -26,7 +26,7 @@ extension NavigationRoute {
     // MARK: - Download Item
 
     #if os(iOS)
-    static func downloadItem(item: DownloadItemDto) -> NavigationRoute {
+    static func downloadItem(item: StoredDownloadItem) -> NavigationRoute {
         NavigationRoute(
             id: "downloadItem-\(item.id)"
         ) {

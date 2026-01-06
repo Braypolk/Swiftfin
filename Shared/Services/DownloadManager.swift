@@ -46,13 +46,17 @@ class DownloadManager: ObservableObject {
     private(set) var currentTask: DownloadTask?
 
     @Published
-    private(set) var completedItems: [DownloadItemDto] = []
+    private(set) var completedItems: [StoredDownloadItem] = []
 
     @Published
     private(set) var itemStates: [String: DownloadItemState] = [:]
 
     @Published
     private(set) var itemProgress: [String: Double] = [:]
+
+    /// Notifies observers when any download-related state changes (additions, deletions, completions)
+    @Published
+    private(set) var downloadsUpdated: Void = ()
 
     private var cancellables = Set<AnyCancellable>()
     private var currentTaskCancellable: AnyCancellable?
@@ -141,7 +145,7 @@ class DownloadManager: ObservableObject {
                 return false
             }
 
-            // Skip if in completed items array (movies/series only)
+            // Skip if in completed items array (check ID only)
             if completedItems.contains(where: { $0.id == newItem.id }) {
                 return false
             }
@@ -242,16 +246,12 @@ class DownloadManager: ObservableObject {
         for itemID in allIDsToDelete {
             var itemType: BaseItemKind?
             var seriesID: String?
-            var seasonID: String?
-
             if let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(itemID, ownerID: userSession.user.id, domain: "downloads") {
                 itemType = storedItem.type
                 seriesID = storedItem.seriesID
-                seasonID = storedItem.seasonID
             } else if let queueItem = queue.first(where: { $0.id == itemID }) {
                 itemType = queueItem.type
                 seriesID = queueItem.seriesID
-                seasonID = queueItem.seasonID
             }
 
             if let type = itemType {
@@ -295,6 +295,7 @@ class DownloadManager: ObservableObject {
         }
 
         persistQueue()
+        downloadsUpdated = ()
         processNextInQueue()
     }
 
@@ -435,7 +436,7 @@ class DownloadManager: ObservableObject {
     private func handleDownloadCompletion(queueItem: DownloadQueueItem, result: Result<StoredDownloadItem, Error>) {
         // Guard against deleted items (check if still in queue)
         guard queue.contains(where: { $0.id == queueItem.id }) else {
-            logger.info("Ignoring completion for deleted item: \(queueItem.name)")
+            logger.info("Ignoring completion for deleted item: \(queueItem.name ?? "Unknown")")
             return
         }
 
@@ -459,11 +460,10 @@ class DownloadManager: ObservableObject {
             // Add to completed items array (only movies and series for main downloads view)
             // Episodes and seasons are accessible via navigation from series
             // This array is used for reactive UI updates, CoreStore is the source of truth
-            let downloadedItem = DownloadItemDto(from: storedItem)
             if storedItem.type == .movie || storedItem.type == .series {
                 // Check if already exists (shouldn't happen, but be safe)
-                if !completedItems.contains(where: { $0.id == downloadedItem.id }) {
-                    completedItems.append(downloadedItem)
+                if !completedItems.contains(where: { $0.id == storedItem.id }) {
+                    completedItems.append(storedItem)
                 }
             }
 
@@ -472,7 +472,7 @@ class DownloadManager: ObservableObject {
             itemStates[queueItem.id] = .complete
             itemProgress[queueItem.id] = 1.0
 
-            logger.info("Completed download: \(downloadedItem.name)")
+            logger.info("Completed download: \(storedItem.item.name ?? "Unknown")")
 
         case let .failure(error):
             itemStates[queueItem.id] = .error
@@ -486,6 +486,7 @@ class DownloadManager: ObservableObject {
         currentTaskCancellable = nil
 
         persistQueue()
+        downloadsUpdated = ()
         processNextInQueue()
     }
 
@@ -547,7 +548,6 @@ class DownloadManager: ObservableObject {
         // Episodes and seasons are accessible via navigation from series, so only include movies/series here
         completedItems = allStoredItems
             .filter { $0.type == .movie || $0.type == .series }
-            .map { DownloadItemDto(from: $0) }
     }
 
     // MARK: - Legacy Compatibility
@@ -711,7 +711,7 @@ class DownloadManager: ObservableObject {
     }
 
     /// Get a downloaded episode as DownloadItemDto for offline playback
-    func downloadedEpisode(for episode: BaseItemDto) -> DownloadItemDto? {
+    func downloadedEpisode(for episode: BaseItemDto) -> StoredDownloadItem? {
         guard let episodeID = episode.id,
               let userSession = Container.shared.currentUserSession(),
               let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
@@ -723,7 +723,7 @@ class DownloadManager: ObservableObject {
             return nil
         }
 
-        return DownloadItemDto(from: storedItem)
+        return storedItem
     }
 
     // MARK: - File Deletion

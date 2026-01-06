@@ -52,7 +52,11 @@ extension SeriesEpisodeSelector {
                 // good enough?
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     guard let playButtonItem else { return }
-                    proxy.scrollTo(id: playButtonItem.unwrappedIDHashOrZero, animated: false)
+
+                    // Only scroll if it's not the first element to avoid alignment bugs
+                    if viewModel.elements.first?.id != playButtonItem.id {
+                        proxy.scrollTo(id: playButtonItem.unwrappedIDHashOrZero, animated: false)
+                    }
                 }
             }
         }
@@ -69,6 +73,11 @@ extension SeriesEpisodeSelector {
                 ErrorHStack(viewModel: viewModel, error: error)
             case .initial, .refreshing:
                 LoadingHStack()
+                    .task {
+                        if viewModel.state == .initial {
+                            viewModel.send(.refresh)
+                        }
+                    }
             }
         }
     }

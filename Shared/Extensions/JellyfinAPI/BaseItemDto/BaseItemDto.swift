@@ -35,6 +35,21 @@ extension BaseItemDto: Displayable {
     }
 }
 
+extension BaseItemDto: MediaItemDisplayable {
+
+    var mediaType: BaseItemKind? {
+        self.type
+    }
+
+    var protocolRunTimeTicks: Int64? {
+        self.runTimeTicks.map { Int64($0) }
+    }
+
+    var protocolPlaybackPositionTicks: Int64? {
+        userData?.playbackPositionTicks.map { Int64($0) }
+    }
+}
+
 extension BaseItemDto: LibraryIdentifiable {
 
     var unwrappedIDHashOrZero: Int {
@@ -135,11 +150,6 @@ extension BaseItemDto {
     var deathday: Date? {
         guard type == .person else { return nil }
         return endDate
-    }
-
-    var episodeLocator: String? {
-        guard let episodeNo = indexNumber else { return nil }
-        return L10n.episodeNumber(episodeNo)
     }
 
     var itemGenres: [ItemGenre]? {
@@ -246,49 +256,15 @@ extension BaseItemDto {
 
     var runtime: Duration? {
         guard let ticks = runTimeTicks else { return nil }
-        return Duration.ticks(ticks)
+        return Duration.ticks(Int(ticks))
     }
 
     var startSeconds: Duration? {
-        guard let ticks = userData?.playbackPositionTicks else { return nil }
-        return Duration.ticks(ticks)
-    }
-
-    var seasonEpisodeLabel: String? {
-        guard let seasonNo = parentIndexNumber, let episodeNo = indexNumber else { return nil }
-        return L10n.seasonAndEpisode(String(seasonNo), String(episodeNo))
+        guard let ticks = protocolPlaybackPositionTicks else { return nil }
+        return Duration.ticks(Int(ticks))
     }
 
     // MARK: Calculations
-
-    var runTimeLabel: String? {
-        let timeHMSFormatter: DateComponentsFormatter = {
-            let formatter = DateComponentsFormatter()
-            formatter.unitsStyle = .abbreviated
-            formatter.allowedUnits = [.hour, .minute]
-            return formatter
-        }()
-
-        guard let runTimeTicks = runTimeTicks,
-              let text = timeHMSFormatter.string(from: Double(runTimeTicks / 10_000_000)) else { return nil }
-
-        return text
-    }
-
-    var progressLabel: String? {
-        guard let playbackPositionTicks = userData?.playbackPositionTicks,
-              let totalTicks = runTimeTicks,
-              playbackPositionTicks != 0,
-              totalTicks != 0 else { return nil }
-
-        let remainingSeconds = (totalTicks - playbackPositionTicks) / 10_000_000
-
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.hour, .minute]
-        formatter.unitsStyle = .abbreviated
-
-        return formatter.string(from: .init(remainingSeconds))
-    }
 
     var programDuration: TimeInterval? {
         guard let startDate, let endDate else { return nil }
@@ -349,13 +325,6 @@ extension BaseItemDto {
 
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .medium
-        return dateFormatter.string(from: premiereDate)
-    }
-
-    var premiereDateYear: String? {
-        guard let premiereDate = premiereDate else { return nil }
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "YYYY"
         return dateFormatter.string(from: premiereDate)
     }
 
@@ -478,17 +447,6 @@ extension BaseItemDto {
         }
 
         return L10n.play
-    }
-
-    var parentTitle: String? {
-        switch type {
-        case .audio:
-            album
-        case .episode:
-            seriesName
-        default:
-            nil
-        }
     }
 
     /// Does this `BaseItemDto` have `Genres`, `People`, `Studios`, or `Tags`

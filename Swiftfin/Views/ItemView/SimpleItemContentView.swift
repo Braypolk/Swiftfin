@@ -11,10 +11,10 @@ import SwiftUI
 
 extension ItemView {
 
-    struct SimpleItemContentView: View {
+    struct SimpleItemContentView<ViewModel: ItemViewModelProtocol>: View {
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
 
         var body: some View {
             SeparatorVStack(alignment: .leading) {

@@ -19,7 +19,7 @@ struct DownloadItemView: View {
     @Router
     private var router
 
-    let item: DownloadItemDto
+    let item: StoredDownloadItem
 
     @StateObject
     private var viewModel: DownloadItemViewModel
@@ -30,40 +30,45 @@ struct DownloadItemView: View {
     @Default(.Customization.itemViewType)
     private var itemViewType
 
-    init(item: DownloadItemDto) {
+    init(item: StoredDownloadItem) {
         self.item = item
-        self._viewModel = StateObject(wrappedValue: DownloadItemViewModel(downloadItem: item))
+        self._viewModel = StateObject(wrappedValue: DownloadItemViewModel(storedItem: item))
     }
 
     var body: some View {
         downloadScrollView(item: item, viewModel: viewModel) {
             scrollContentView
         }
-        .navigationTitle(item.displayTitle)
+        .navigationTitle(item.item.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: viewModel.isDeleted) { isDeleted in
+            if isDeleted {
+                router.dismiss()
+            }
+        }
     }
 
     @ViewBuilder
     private var scrollContentView: some View {
         switch item.type {
         case .movie:
-            DownloadItemView.DownloadMovieItemContentView(viewModel: viewModel)
+            ItemView.MovieItemContentView(viewModel: viewModel)
         case .series:
-            DownloadItemView.DownloadSeriesItemContentView(viewModel: viewModel)
+            ItemView.SeriesItemContentView(viewModel: viewModel)
         case .episode, .musicVideo, .video:
-            DownloadItemView.DownloadSimpleItemContentView(viewModel: viewModel)
+            ItemView.SimpleItemContentView(viewModel: viewModel)
         default:
-            DownloadItemView.DownloadSimpleItemContentView(viewModel: viewModel)
+            ItemView.SimpleItemContentView(viewModel: viewModel)
         }
     }
 
     private func downloadScrollView<Content: View>(
-        item: DownloadItemDto,
+        item: StoredDownloadItem,
         viewModel: DownloadItemViewModel,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         if UIDevice.isPad {
-            return AnyView(DownloadItemView.DownloadiPadOSCinematicScrollView(item: item, viewModel: viewModel, content: content))
+            return AnyView(DownloadItemView.DownloadiPadOSCinematicScrollView(viewModel: viewModel, content: content))
         }
 
         switch item.type {

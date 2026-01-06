@@ -12,7 +12,7 @@ import SwiftUI
 
 extension ItemView.AboutView {
 
-    struct ImageCard: View {
+    struct ImageCard<ViewModel: ItemViewModelProtocol>: View {
 
         // MARK: - Environment & Observed Objects
 
@@ -20,7 +20,7 @@ extension ItemView.AboutView {
         private var router
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
 
         // MARK: - Body
 
@@ -41,9 +41,7 @@ extension ItemView.AboutView {
         private func action(namespace: Namespace.ID) {
             switch viewModel.item.type {
             case .episode:
-                if let episodeViewModel = viewModel as? EpisodeItemViewModel,
-                   let seriesItem = episodeViewModel.seriesItem
-                {
+                if let seriesItem = viewModel.seriesItem {
                     router.route(to: .item(item: seriesItem), in: namespace)
                 }
             default:

@@ -104,12 +104,12 @@ struct PagingLibraryView<Element: Poster>: View {
         let initialPosterType = Defaults[.Customization.Library.rememberLayout] ? posterType : defaultPosterType
 
         if UIDevice.isPhone {
-            layout = Self.phoneLayout(
+            layout = LibraryDisplayType.phoneCollectionLayout(
                 posterType: initialPosterType,
                 viewType: initialDisplayType
             )
         } else {
-            layout = Self.padLayout(
+            layout = LibraryDisplayType.padCollectionLayout(
                 posterType: initialPosterType,
                 viewType: initialDisplayType,
                 listColumnCount: initialListColumnCount
@@ -141,39 +141,6 @@ struct PagingLibraryView<Element: Poster>: View {
     }
 
     // MARK: layout
-
-    // TODO: rename old "viewType" paramter to "displayType" and sort
-
-    private static func padLayout(
-        posterType: PosterDisplayType,
-        viewType: LibraryDisplayType,
-        listColumnCount: Int
-    ) -> CollectionVGridLayout {
-        switch (posterType, viewType) {
-        case (.landscape, .grid):
-            .minWidth(200)
-        case (.portrait, .grid), (.square, .grid):
-            .minWidth(150)
-        case (_, .list):
-            .columns(listColumnCount, insets: .zero, itemSpacing: 0, lineSpacing: 0)
-        }
-    }
-
-    private static func phoneLayout(
-        posterType: PosterDisplayType,
-        viewType: LibraryDisplayType
-    ) -> CollectionVGridLayout {
-        switch (posterType, viewType) {
-        case (.landscape, .grid):
-            .columns(2)
-        case (.portrait, .grid):
-            .columns(3)
-        case (.square, .grid):
-            .columns(3)
-        case (_, .list):
-            .columns(1, insets: .zero, itemSpacing: 0, lineSpacing: 0)
-        }
-    }
 
     // MARK: item view
 
@@ -272,198 +239,205 @@ struct PagingLibraryView<Element: Poster>: View {
     // TODO: becoming too large for typechecker during development, should break up somehow
 
     var body: some View {
-        ZStack {
-            Color.clear
+        pagingLibraryModifiers {
+            ZStack {
+                Color.clear
 
-            switch viewModel.state {
-            case .content, .initial, .refreshing:
-                contentView
-            case let .error(error):
-                ErrorView(error: error)
-            }
-        }
-        .animation(.linear(duration: 0.1), value: viewModel.state)
-        .ignoresSafeArea()
-        .onSizeChanged { _, safeArea in
-            self.safeArea = safeArea
-        }
-        .navigationTitle(viewModel.parent?.displayTitle ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable {
-            viewModel.send(.refresh)
-        }
-        .ifLet(viewModel.filterViewModel) { view, filterViewModel in
-            view.navigationBarFilterDrawer(
-                viewModel: filterViewModel,
-                types: enabledDrawerFilters
-            ) {
-                router.route(to: .filter(type: $0.type, viewModel: $0.viewModel))
-            }
-        }
-        .onChange(of: defaultDisplayType) { newValue in
-            guard !Defaults[.Customization.Library.rememberLayout] else { return }
-
-            if UIDevice.isPhone {
-                layout = Self.phoneLayout(
-                    posterType: defaultPosterType,
-                    viewType: newValue
-                )
-            } else {
-                layout = Self.padLayout(
-                    posterType: defaultPosterType,
-                    viewType: newValue,
-                    listColumnCount: defaultListColumnCount
-                )
-            }
-        }
-        .onChange(of: defaultListColumnCount) { newValue in
-            guard !Defaults[.Customization.Library.rememberLayout] else { return }
-
-            if UIDevice.isPad {
-                layout = Self.padLayout(
-                    posterType: defaultPosterType,
-                    viewType: defaultDisplayType,
-                    listColumnCount: newValue
-                )
-            }
-        }
-        .onChange(of: defaultPosterType) { newValue in
-            guard !Defaults[.Customization.Library.rememberLayout] else { return }
-
-            if UIDevice.isPhone {
-                if defaultDisplayType == .list {
-                    collectionVGridProxy.layout()
-                } else {
-                    layout = Self.phoneLayout(
-                        posterType: newValue,
-                        viewType: defaultDisplayType
-                    )
+                switch viewModel.state {
+                case .content, .initial, .refreshing:
+                    contentView
+                case let .error(error):
+                    ErrorView(error: error)
                 }
-            } else {
-                if defaultDisplayType == .list {
-                    collectionVGridProxy.layout()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pagingLibraryModifiers<V: View>(@ViewBuilder content: () -> V) -> some View {
+        content()
+            .animation(.linear(duration: 0.1), value: viewModel.state)
+            .ignoresSafeArea()
+            .onSizeChanged { _, area in
+                safeArea = area
+            }
+            .navigationTitle(viewModel.parent?.displayTitle ?? "")
+            .navigationBarTitleDisplayMode(.inline)
+            .refreshable {
+                viewModel.send(.refresh)
+            }
+            .ifLet(viewModel.filterViewModel) { view, filterViewModel in
+                view.navigationBarFilterDrawer(
+                    viewModel: filterViewModel,
+                    types: enabledDrawerFilters
+                ) {
+                    router.route(to: .filter(type: $0.type, viewModel: $0.viewModel))
+                }
+            }
+            .onChange(of: defaultDisplayType) { newValue in
+                guard !Defaults[.Customization.Library.rememberLayout] else { return }
+
+                if UIDevice.isPhone {
+                    layout = LibraryDisplayType.phoneCollectionLayout(
+                        posterType: defaultPosterType,
+                        viewType: newValue
+                    )
                 } else {
-                    layout = Self.padLayout(
-                        posterType: newValue,
-                        viewType: defaultDisplayType,
+                    layout = LibraryDisplayType.padCollectionLayout(
+                        posterType: defaultPosterType,
+                        viewType: newValue,
                         listColumnCount: defaultListColumnCount
                     )
                 }
             }
-        }
-        .onChange(of: displayType) { newValue in
-            if UIDevice.isPhone {
-                layout = Self.phoneLayout(
-                    posterType: posterType,
-                    viewType: newValue
-                )
-            } else {
-                layout = Self.padLayout(
-                    posterType: posterType,
-                    viewType: newValue,
-                    listColumnCount: listColumnCount
-                )
-            }
-        }
-        .onChange(of: listColumnCount) { newValue in
-            if UIDevice.isPad {
-                layout = Self.padLayout(
-                    posterType: posterType,
-                    viewType: displayType,
-                    listColumnCount: newValue
-                )
-            }
-        }
-        .onChange(of: posterType) { newValue in
-            if UIDevice.isPhone {
-                if displayType == .list {
-                    collectionVGridProxy.layout()
-                } else {
-                    layout = Self.phoneLayout(
-                        posterType: newValue,
-                        viewType: displayType
+            .onChange(of: defaultListColumnCount) { newValue in
+                guard !Defaults[.Customization.Library.rememberLayout] else { return }
+
+                if UIDevice.isPad {
+                    layout = LibraryDisplayType.padCollectionLayout(
+                        posterType: defaultPosterType,
+                        viewType: defaultDisplayType,
+                        listColumnCount: newValue
                     )
                 }
-            } else {
-                if displayType == .list {
-                    collectionVGridProxy.layout()
+            }
+            .onChange(of: defaultPosterType) { newValue in
+                guard !Defaults[.Customization.Library.rememberLayout] else { return }
+
+                if UIDevice.isPhone {
+                    if defaultDisplayType == .list {
+                        collectionVGridProxy.layout()
+                    } else {
+                        layout = LibraryDisplayType.phoneCollectionLayout(
+                            posterType: newValue,
+                            viewType: defaultDisplayType
+                        )
+                    }
                 } else {
-                    layout = Self.padLayout(
-                        posterType: newValue,
-                        viewType: displayType,
+                    if defaultDisplayType == .list {
+                        collectionVGridProxy.layout()
+                    } else {
+                        layout = LibraryDisplayType.padCollectionLayout(
+                            posterType: newValue,
+                            viewType: defaultDisplayType,
+                            listColumnCount: defaultListColumnCount
+                        )
+                    }
+                }
+            }
+            .onChange(of: displayType) { newValue in
+                if UIDevice.isPhone {
+                    layout = LibraryDisplayType.phoneCollectionLayout(
+                        posterType: posterType,
+                        viewType: newValue
+                    )
+                } else {
+                    layout = LibraryDisplayType.padCollectionLayout(
+                        posterType: posterType,
+                        viewType: newValue,
                         listColumnCount: listColumnCount
                     )
                 }
             }
-        }
-        .onChange(of: rememberLayout) { newValue in
-            let newDisplayType = newValue ? displayType : defaultDisplayType
-            let newListColumnCount = newValue ? listColumnCount : defaultListColumnCount
-            let newPosterType = newValue ? posterType : defaultPosterType
-
-            if UIDevice.isPhone {
-                layout = Self.phoneLayout(
-                    posterType: newPosterType,
-                    viewType: newDisplayType
-                )
-            } else {
-                layout = Self.padLayout(
-                    posterType: newPosterType,
-                    viewType: newDisplayType,
-                    listColumnCount: newListColumnCount
-                )
-            }
-        }
-        .onChange(of: viewModel.filterViewModel?.currentFilters) { newValue in
-            guard let newValue, let id = viewModel.parent?.id else { return }
-
-            if Defaults[.Customization.Library.rememberSort] {
-                let newStoredFilters = StoredValues[.User.libraryFilters(parentID: id)]
-                    .mutating(\.sortBy, with: newValue.sortBy)
-                    .mutating(\.sortOrder, with: newValue.sortOrder)
-
-                StoredValues[.User.libraryFilters(parentID: id)] = newStoredFilters
-            }
-        }
-        .onReceive(viewModel.events) { event in
-            switch event {
-            case let .gotRandomItem(item):
-                switch item {
-                case let item as BaseItemDto:
-                    select(item: item, in: namespace)
-                case let item as BaseItemPerson:
-                    select(item: BaseItemDto(person: item), in: namespace)
-                default:
-                    assertionFailure("Used an unexpected type within a `PagingLibaryView`?")
+            .onChange(of: listColumnCount) { newValue in
+                if UIDevice.isPad {
+                    layout = LibraryDisplayType.padCollectionLayout(
+                        posterType: posterType,
+                        viewType: displayType,
+                        listColumnCount: newValue
+                    )
                 }
             }
-        }
-        .onFirstAppear {
-            if viewModel.state == .initial {
-                viewModel.send(.refresh)
+            .onChange(of: posterType) { newValue in
+                if UIDevice.isPhone {
+                    if displayType == .list {
+                        collectionVGridProxy.layout()
+                    } else {
+                        layout = LibraryDisplayType.phoneCollectionLayout(
+                            posterType: newValue,
+                            viewType: displayType
+                        )
+                    }
+                } else {
+                    if displayType == .list {
+                        collectionVGridProxy.layout()
+                    } else {
+                        layout = LibraryDisplayType.padCollectionLayout(
+                            posterType: newValue,
+                            viewType: displayType,
+                            listColumnCount: listColumnCount
+                        )
+                    }
+                }
             }
-        }
-        .navigationBarMenuButton(
-            isLoading: viewModel.backgroundStates.contains(.gettingNextPage)
-        ) {
-            if Defaults[.Customization.Library.rememberLayout] {
-                LibraryViewTypeToggle(
-                    posterType: $posterType,
-                    viewType: $displayType,
-                    listColumnCount: $listColumnCount
-                )
-            } else {
-                LibraryViewTypeToggle(
-                    posterType: $defaultPosterType,
-                    viewType: $defaultDisplayType,
-                    listColumnCount: $defaultListColumnCount
-                )
-            }
+            .onChange(of: rememberLayout) { newValue in
+                let newDisplayType = newValue ? displayType : defaultDisplayType
+                let newListColumnCount = newValue ? listColumnCount : defaultListColumnCount
+                let newPosterType = newValue ? posterType : defaultPosterType
 
-            Button(L10n.random, systemImage: "dice.fill") {
-                viewModel.send(.getRandomItem)
+                if UIDevice.isPhone {
+                    layout = LibraryDisplayType.phoneCollectionLayout(
+                        posterType: newPosterType,
+                        viewType: newDisplayType
+                    )
+                } else {
+                    layout = LibraryDisplayType.padCollectionLayout(
+                        posterType: newPosterType,
+                        viewType: newDisplayType,
+                        listColumnCount: newListColumnCount
+                    )
+                }
             }
-            .disabled(viewModel.elements.isEmpty)
-        }
+            .onChange(of: viewModel.filterViewModel?.currentFilters) { newValue in
+                guard let newValue, let id = viewModel.parent?.id else { return }
+
+                if Defaults[.Customization.Library.rememberSort] {
+                    let newStoredFilters = StoredValues[.User.libraryFilters(parentID: id)]
+                        .mutating(\.sortBy, with: newValue.sortBy)
+                        .mutating(\.sortOrder, with: newValue.sortOrder)
+
+                    StoredValues[.User.libraryFilters(parentID: id)] = newStoredFilters
+                }
+            }
+            .onReceive(viewModel.events) { event in
+                switch event {
+                case let .gotRandomItem(item):
+                    switch item {
+                    case let item as BaseItemDto:
+                        select(item: item, in: namespace)
+                    case let item as BaseItemPerson:
+                        select(item: BaseItemDto(person: item), in: namespace)
+                    default:
+                        assertionFailure("Used an unexpected type within a `PagingLibaryView`?")
+                    }
+                }
+            }
+            .onFirstAppear {
+                if viewModel.state == .initial {
+                    viewModel.send(.refresh)
+                }
+            }
+            .navigationBarMenuButton(
+                isLoading: viewModel.backgroundStates.contains(.gettingNextPage)
+            ) {
+                if Defaults[.Customization.Library.rememberLayout] {
+                    LibraryViewTypeToggle(
+                        posterType: $posterType,
+                        viewType: $displayType,
+                        listColumnCount: $listColumnCount
+                    )
+                } else {
+                    LibraryViewTypeToggle(
+                        posterType: $defaultPosterType,
+                        viewType: $defaultDisplayType,
+                        listColumnCount: $defaultListColumnCount
+                    )
+                }
+
+                Button(L10n.random, systemImage: "dice.fill") {
+                    viewModel.send(.getRandomItem)
+                }
+                .disabled(viewModel.elements.isEmpty)
+            }
     }
 }

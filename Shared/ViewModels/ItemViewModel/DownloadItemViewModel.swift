@@ -14,12 +14,6 @@ import IdentifiedCollections
 import JellyfinAPI
 import SwiftUI
 
-/// Protocol for use with components like AttributesHStack.
-protocol ItemViewModelProtocol: ObservableObject {
-    var item: BaseItemDto { get }
-    var selectedMediaSource: MediaSourceInfo? { get }
-}
-
 /// Unified SeasonItemViewModel that works for both online and downloaded content.
 final class SeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Identifiable {
     private let _season: BaseItemDto
@@ -58,12 +52,6 @@ final class SeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Identifiab
     }
 }
 
-/// Protocol for view models that support series with seasons.
-protocol SeriesViewModelProtocol: ItemViewModelProtocol {
-    var seasons: IdentifiedArrayOf<SeasonItemViewModel> { get }
-    var playButtonItem: BaseItemDto? { get }
-}
-
 /// A lightweight view model for downloaded items that provides the same interface
 /// as ItemViewModel for use with existing components.
 class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesViewModelProtocol {
@@ -96,6 +84,10 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
     private var downloadManager: DownloadManager
 
     private var loadSeasonsTask: AnyCancellable?
+    private var cancellables = Set<AnyCancellable>()
+
+    @Published
+    var isDeleted = false
 
     init(storedItem: StoredDownloadItem) {
         self.storedItem = storedItem
@@ -110,53 +102,29 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
         if storedItem.type == .series {
             loadSeasons()
         }
+
+        setupObservers()
     }
 
-    // BRAY-TODO: is this needed?
-    /// Convenience initializer for backward compatibility with DownloadItemDto
-    /// Note: This will load the StoredDownloadItem from CoreStore
-    convenience init(downloadItem: DownloadItemDto) {
-        // Try to load the StoredDownloadItem from CoreStore
-        if let userSession = Container.shared.currentUserSession(),
-           let stored: StoredDownloadItem = try? AnyStoredData.fetch(
-               downloadItem.id,
-               ownerID: userSession.user.id,
-               domain: "downloads"
-           )
-        {
-            self.init(storedItem: stored)
-        } else {
-            // Fallback: Create a minimal StoredDownloadItem from DownloadItemDto
-            // This shouldn't happen in normal usage, but provides a safety net
-            var baseItem = BaseItemDto()
-            baseItem.id = downloadItem.id
-            baseItem.name = downloadItem.name
-            baseItem.type = downloadItem.type
-            baseItem.overview = downloadItem.overview
-            baseItem.genres = downloadItem.genres
-            baseItem.productionYear = downloadItem.productionYear
-            baseItem.premiereDate = downloadItem.premiereDate
-            baseItem.officialRating = downloadItem.officialRating
-            baseItem.communityRating = downloadItem.communityRating.map { Float($0) }
-            baseItem.criticRating = downloadItem.criticRating.map { Float($0) }
-            baseItem.runTimeTicks = downloadItem.runTimeTicks.map { Int($0) }
-            baseItem.seriesID = downloadItem.seriesID
-            baseItem.seriesName = downloadItem.seriesName
-            baseItem.seasonID = downloadItem.seasonID
-            baseItem.seasonName = downloadItem.seasonName
-            baseItem.parentIndexNumber = downloadItem.parentIndexNumber
-            baseItem.indexNumber = downloadItem.indexNumber
+    private func setupObservers() {
+        downloadManager.$downloadsUpdated
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.handleDownloadsUpdated()
+            }
+            .store(in: &cancellables)
+    }
 
-            let stored = StoredDownloadItem(
-                item: baseItem,
-                downloadedAt: downloadItem.downloadedAt,
-                fileSize: downloadItem.fileSize,
-                mediaPath: downloadItem.mediaPath,
-                primaryImagePath: downloadItem.primaryImagePath,
-                backdropImagePath: downloadItem.backdropImagePath,
-                logoImagePath: downloadItem.logoImagePath
-            )
-            self.init(storedItem: stored)
+    private func handleDownloadsUpdated() {
+        // Check if item still exists
+        if downloadManager.status(for: storedItem.id) == nil {
+            isDeleted = true
+            return
+        }
+
+        // If series, reload seasons to reflect changes (e.g. deleted episodes)
+        if storedItem.type == .series {
+            loadSeasons()
         }
     }
 
@@ -179,6 +147,28 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
                     .map { SeasonItemViewModel(DownloadSeasonItemViewModel(season: $0, seriesID: seriesID)) }
 
                 self.seasons.append(contentsOf: seasonViewModels)
+
+                // For series, set the playButtonItem to the first episode of the first season
+                // to provide a starting point for season selection in the UI.
+                if let firstSeasonVM = seasonViewModels.first {
+                    Task {
+                        let episodes = try? await firstSeasonVM.get(page: 0)
+                        if let firstEpisode = episodes?.first {
+                            await MainActor.run {
+                                self.playButtonItem = firstEpisode
+                            }
+                        }
+                    }
+                } else {
+                    // If no seasons found, check if we should consider this item deleted
+                    // We only delete if there are no active downloads for this series
+                    let status = self.downloadManager.aggregatedStatus(for: seriesID, type: .series)
+                    let isDownloading = (status?.downloadingEpisodes ?? 0) > 0 || (status?.pendingEpisodes ?? 0) > 0
+
+                    if !isDownloading {
+                        self.downloadManager.delete(itemID: seriesID)
+                    }
+                }
             }
         }
         .asAnyCancellable()
@@ -195,7 +185,19 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
         var seasons: [BaseItemDto] = []
 
         for seasonID in seasonContents {
+            // Skip hidden files
+            if seasonID.hasPrefix(".") { continue }
+
             let seasonPath = URL.seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
+            let episodesPath = seasonPath.appendingPathComponent("episodes")
+
+            // Filter out empty seasons: check if episodes directory exists and has contents
+            guard let episodeContents = try? FileManager.default.contentsOfDirectory(atPath: episodesPath.path),
+                  episodeContents.contains(where: { !$0.hasPrefix(".") })
+            else {
+                continue
+            }
+
             let metadataPath = seasonPath.appendingPathComponent("Metadata").appendingPathComponent("Item.json")
 
             guard let data = FileManager.default.contents(atPath: metadataPath.path),

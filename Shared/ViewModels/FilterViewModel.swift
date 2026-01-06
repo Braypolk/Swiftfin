@@ -176,6 +176,22 @@ final class FilterViewModel: ViewModel, Stateful {
         }
     }
 
+    // MARK: - Set Available Filters (Manual)
+
+    func setAvailableFilters(
+        genres: [ItemGenre],
+        tags: [ItemTag],
+        years: [ItemYear],
+        itemTypes: [BaseItemKind]? = nil
+    ) {
+        allFilters.genres = genres
+        allFilters.tags = tags
+        allFilters.years = years
+        if let itemTypes {
+            allFilters.itemTypes = itemTypes
+        }
+    }
+
     // MARK: - Get Query Filters
 
     /// Gets the query filters from the parent

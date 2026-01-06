@@ -25,6 +25,9 @@ struct DownloadPagingLibraryView: View {
     @Default(.offlineMode)
     private var offlineMode
 
+    @Default(.Customization.Library.enabledDrawerFilters)
+    private var enabledDrawerFilters
+
     @Default(.Experimental.downloads)
     private var experimentalDownloads
 
@@ -53,12 +56,12 @@ struct DownloadPagingLibraryView: View {
         let initialListColumnCount = Defaults[.Customization.Library.listColumnCount]
 
         if UIDevice.isPhone {
-            _columns = State(initialValue: Self.phoneLayout(
+            _columns = State(initialValue: LibraryDisplayType.phoneGridItems(
                 posterType: initialPosterType,
                 viewType: initialDisplayType
             ))
         } else {
-            _columns = State(initialValue: Self.padLayout(
+            _columns = State(initialValue: LibraryDisplayType.padGridItems(
                 posterType: initialPosterType,
                 viewType: initialDisplayType,
                 listColumnCount: initialListColumnCount
@@ -102,9 +105,13 @@ struct DownloadPagingLibraryView: View {
                     DownloadQueueView(viewModel: viewModel)
                 }
             }
-            .onFirstAppear {
-                viewModel.performRefresh()
+            .navigationBarFilterDrawer(
+                viewModel: viewModel.filterViewModel,
+                types: enabledDrawerFilters
+            ) {
+                router.route(to: .filter(type: $0.type, viewModel: $0.viewModel))
             }
+
             .onChange(of: libraryDisplayType) { newValue in
                 updateLayout(displayType: newValue, posterType: libraryPosterType)
             }
@@ -123,47 +130,16 @@ struct DownloadPagingLibraryView: View {
     ) {
         let columnsCount = listColumnCount ?? defaultListColumnCount
         if UIDevice.isPhone {
-            columns = Self.phoneLayout(
+            columns = LibraryDisplayType.phoneGridItems(
                 posterType: posterType,
                 viewType: displayType
             )
         } else {
-            columns = Self.padLayout(
+            columns = LibraryDisplayType.padGridItems(
                 posterType: posterType,
                 viewType: displayType,
                 listColumnCount: columnsCount
             )
-        }
-    }
-
-    private static func padLayout(
-        posterType: PosterDisplayType,
-        viewType: LibraryDisplayType,
-        listColumnCount: Int
-    ) -> [GridItem] {
-        switch (posterType, viewType) {
-        case (.landscape, .grid):
-            return [GridItem(.adaptive(minimum: 200), spacing: 8)]
-        case (.portrait, .grid), (.square, .grid):
-            return [GridItem(.adaptive(minimum: 150), spacing: 8)]
-        case (_, .list):
-            return Array(repeating: GridItem(.flexible(), spacing: 0), count: listColumnCount)
-        }
-    }
-
-    private static func phoneLayout(
-        posterType: PosterDisplayType,
-        viewType: LibraryDisplayType
-    ) -> [GridItem] {
-        switch (posterType, viewType) {
-        case (.landscape, .grid):
-            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 2)
-        case (.portrait, .grid):
-            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
-        case (.square, .grid):
-            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
-        case (_, .list):
-            return [GridItem(.flexible(), spacing: 0)]
         }
     }
 
@@ -247,7 +223,7 @@ struct DownloadPagingLibraryView: View {
                 Button {
                     router.route(to: .downloadItem(item: item))
                 } label: {
-                    DownloadItemPosterView(item: item)
+                    DownloadItemPosterView(item: DownloadItemDto(from: item))
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -269,7 +245,7 @@ struct DownloadPagingLibraryView: View {
                 Button {
                     router.route(to: .downloadItem(item: item))
                 } label: {
-                    DownloadItemRowView(item: item)
+                    DownloadItemRowView(item: DownloadItemDto(from: item))
                 }
                 .buttonStyle(.plain)
                 .contextMenu {

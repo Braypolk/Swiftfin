@@ -73,72 +73,31 @@ struct DownloadItemDto: Codable, Hashable, Identifiable {
     let fileSize: Int64?
 
     // MARK: - Computed Properties
+}
 
-    /// Episode locator string (e.g., "S1:E5")
-    var episodeLocator: String? {
-        guard let episodeNo = indexNumber else { return nil }
-        return L10n.episodeNumber(episodeNo)
+// MARK: - MediaItemDisplayable Conformance
+
+extension DownloadItemDto: MediaItemDisplayable {
+
+    var mediaType: BaseItemKind? {
+        self.type
     }
 
-    /// Season and episode label (e.g., "S1:E5")
-    var seasonEpisodeLabel: String? {
-        guard let seasonNo = parentIndexNumber, let episodeNo = indexNumber else { return nil }
-        return L10n.seasonAndEpisode(String(seasonNo), String(episodeNo))
+    var protocolRunTimeTicks: Int64? {
+        self.runTimeTicks
     }
 
-    /// Parent title (series name for episodes, album for audio)
-    var parentTitle: String? {
-        switch type {
-        case .episode:
-            return seriesName
-        default:
-            return nil
-        }
+    var protocolPlaybackPositionTicks: Int64? {
+        self.playbackPositionTicks
     }
+}
 
-    /// Premiere date year as string
-    var premiereDateYear: String? {
-        guard let premiereDate = premiereDate else { return nil }
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "YYYY"
-        return dateFormatter.string(from: premiereDate)
-    }
+extension DownloadItemDto {
 
     /// Runtime as Duration
     var runtime: Duration? {
         guard let ticks = runTimeTicks else { return nil }
         return Duration.ticks(Int(ticks))
-    }
-
-    /// Human-readable runtime label
-    var runTimeLabel: String? {
-        let timeHMSFormatter: DateComponentsFormatter = {
-            let formatter = DateComponentsFormatter()
-            formatter.unitsStyle = .abbreviated
-            formatter.allowedUnits = [.hour, .minute]
-            return formatter
-        }()
-
-        guard let runTimeTicks = runTimeTicks,
-              let text = timeHMSFormatter.string(from: Double(runTimeTicks / 10_000_000)) else { return nil }
-
-        return text
-    }
-
-    /// Play remaining time label (e.g., "45 min remaining")
-    var progressLabel: String? {
-        guard let playbackPositionTicks = playbackPositionTicks,
-              let totalTicks = runTimeTicks,
-              playbackPositionTicks != 0,
-              totalTicks != 0 else { return nil }
-
-        let remainingSeconds = (totalTicks - playbackPositionTicks) / 10_000_000
-
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.hour, .minute]
-        formatter.unitsStyle = .abbreviated
-
-        return formatter.string(from: .init(remainingSeconds))
     }
 }
 

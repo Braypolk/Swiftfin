@@ -52,10 +52,10 @@ final class DownloadPagingLibraryViewModel: ViewModel {
 
     /// All downloaded items
     @Published
-    var elements: IdentifiedArray<Int, DownloadItemDto> = IdentifiedArray([], id: \.unwrappedIDHashOrZero, uniquingIDsWith: { x, _ in x })
+    var elements: IdentifiedArray<String, StoredDownloadItem> = IdentifiedArray([], id: \.id, uniquingIDsWith: { x, _ in x })
 
     @Published
-    var filterViewModel: DownloadFilterViewModel = DownloadFilterViewModel()
+    var filterViewModel: FilterViewModel = FilterViewModel()
 
     @Published
     var currentDownload: DownloadTask?
@@ -119,7 +119,7 @@ final class DownloadPagingLibraryViewModel: ViewModel {
     @Function(\Action.Cases.refresh)
     private func _refresh() {
         let items = downloadManager.completedItems
-        filterViewModel.updateAvailableFilters(from: items)
+        updateAvailableFilters(from: items)
         applyFiltersAndSort(to: items)
     }
 
@@ -135,14 +135,9 @@ final class DownloadPagingLibraryViewModel: ViewModel {
 
     // MARK: - Public Methods (for view access)
 
-    // BRAY-TODO: is this needed?
-    func performRefresh() {
-        _refresh()
-    }
-
     // MARK: - Filtering and Sorting
 
-    private func applyFiltersAndSort(to items: [DownloadItemDto]) {
+    private func applyFiltersAndSort(to items: [StoredDownloadItem]) {
         var filteredItems = items
         let filters = filterViewModel.currentFilters
 
@@ -153,7 +148,7 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         if !filters.genres.isEmpty {
             let genreValues = Set(filters.genres.map(\.value))
             filteredItems = filteredItems.filter { item in
-                guard let genres = item.genres else { return false }
+                guard let genres = item.item.genres else { return false }
                 return !Set(genres).isDisjoint(with: genreValues)
             }
         }
@@ -161,7 +156,7 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         if !filters.years.isEmpty {
             let yearValues = Set(filters.years.compactMap { Int($0.value) })
             filteredItems = filteredItems.filter { item in
-                guard let year = item.productionYear else { return false }
+                guard let year = item.item.productionYear else { return false }
                 return yearValues.contains(year)
             }
         }
@@ -169,13 +164,13 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         if !filters.tags.isEmpty {
             let tagValues = Set(filters.tags.map(\.value))
             filteredItems = filteredItems.filter { item in
-                guard let tags = item.tags else { return false }
+                guard let tags = item.item.tags else { return false }
                 return !Set(tags).isDisjoint(with: tagValues)
             }
         }
 
         filteredItems = applySorting(to: filteredItems, sortBy: filters.sortBy, sortOrder: filters.sortOrder)
-        elements = IdentifiedArray(filteredItems, id: \.unwrappedIDHashOrZero, uniquingIDsWith: { x, _ in x })
+        elements = IdentifiedArray(filteredItems, id: \.id, uniquingIDsWith: { x, _ in x })
 
         if elements.isEmpty {
             state = .empty
@@ -185,10 +180,10 @@ final class DownloadPagingLibraryViewModel: ViewModel {
     }
 
     private func applySorting(
-        to items: [DownloadItemDto],
+        to items: [StoredDownloadItem],
         sortBy: [ItemSortBy],
         sortOrder: [ItemSortOrder]
-    ) -> [DownloadItemDto] {
+    ) -> [StoredDownloadItem] {
         let ascending = sortOrder.first == .ascending
 
         guard let primarySort = sortBy.first else {
@@ -200,8 +195,8 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         case .name:
             return items.sorted {
                 ascending
-                    ? ($0.sortName ?? $0.name) < ($1.sortName ?? $1.name)
-                    : ($0.sortName ?? $0.name) > ($1.sortName ?? $1.name)
+                    ? ($0.item.sortName ?? $0.item.name ?? "") < ($1.item.sortName ?? $1.item.name ?? "")
+                    : ($0.item.sortName ?? $0.item.name ?? "") > ($1.item.sortName ?? $1.item.name ?? "")
             }
         case .dateLastContentAdded, .dateCreated:
             return items.sorted {
@@ -209,26 +204,26 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             }
         case .premiereDate, .productionYear:
             return items.sorted {
-                let year0 = $0.productionYear ?? 0
-                let year1 = $1.productionYear ?? 0
+                let year0 = $0.item.productionYear ?? 0
+                let year1 = $1.item.productionYear ?? 0
                 return ascending ? year0 < year1 : year0 > year1
             }
         case .communityRating:
             return items.sorted {
-                let rating0 = $0.communityRating ?? 0
-                let rating1 = $1.communityRating ?? 0
+                let rating0 = $0.item.communityRating ?? 0
+                let rating1 = $1.item.communityRating ?? 0
                 return ascending ? rating0 < rating1 : rating0 > rating1
             }
         case .criticRating:
             return items.sorted {
-                let rating0 = $0.criticRating ?? 0
-                let rating1 = $1.criticRating ?? 0
+                let rating0 = $0.item.criticRating ?? 0
+                let rating1 = $1.item.criticRating ?? 0
                 return ascending ? rating0 < rating1 : rating0 > rating1
             }
         case .runtime:
             return items.sorted {
-                let runtime0 = $0.runTimeTicks ?? 0
-                let runtime1 = $1.runTimeTicks ?? 0
+                let runtime0 = $0.item.runTimeTicks ?? 0
+                let runtime1 = $1.item.runTimeTicks ?? 0
                 return ascending ? runtime0 < runtime1 : runtime0 > runtime1
             }
         case .random:
@@ -321,79 +316,39 @@ final class DownloadPagingLibraryViewModel: ViewModel {
             return d1 < d2
         }
     }
-}
 
-class DownloadFilterViewModel: ObservableObject {
-
-    @Published
-    var currentFilters: DownloadFilterCollection
-
-    @Published
-    var availableGenres: [ItemGenre] = []
-
-    @Published
-    var availableYears: [ItemYear] = []
-
-    @Published
-    var availableTags: [ItemTag] = []
-
-    @Published
-    var availableItemTypes: [BaseItemKind] = []
-
-    init() {
-        self.currentFilters = DownloadFilterCollection.default
-    }
-
-    func updateAvailableFilters(from items: [DownloadItemDto]) {
+    private func updateAvailableFilters(from items: [StoredDownloadItem]) {
         var genreSet = Set<String>()
         for item in items {
-            if let genres = item.genres {
+            if let genres = item.item.genres {
                 genreSet.formUnion(genres)
             }
         }
-        availableGenres = genreSet.sorted().map { ItemGenre(stringLiteral: $0) }
+        let genres = genreSet.sorted().map { ItemGenre(stringLiteral: $0) }
 
         var yearSet = Set<Int>()
         for item in items {
-            if let year = item.productionYear {
+            if let year = item.item.productionYear {
                 yearSet.insert(year)
             }
         }
-        availableYears = yearSet.sorted(by: >).map { ItemYear(integerLiteral: $0) }
+        let years = yearSet.sorted(by: >).map { ItemYear(integerLiteral: $0) }
 
         var tagSet = Set<String>()
         for item in items {
-            if let tags = item.tags {
+            if let tags = item.item.tags {
                 tagSet.formUnion(tags)
             }
         }
-        availableTags = tagSet.sorted().map { ItemTag(stringLiteral: $0) }
+        let tags = tagSet.sorted().map { ItemTag(stringLiteral: $0) }
 
-        availableItemTypes = Array(Set(items.map(\.type))).sorted { $0.rawValue < $1.rawValue }
-    }
+        let itemTypes = Array(Set(items.map(\.type))).sorted { $0.rawValue < $1.rawValue }
 
-    func reset() {
-        currentFilters = DownloadFilterCollection.default
-    }
-}
-
-struct DownloadFilterCollection: Hashable {
-
-    var genres: [ItemGenre]
-    var years: [ItemYear]
-    var tags: [ItemTag]
-    var itemTypes: [BaseItemKind]
-    var sortBy: [ItemSortBy]
-    var sortOrder: [ItemSortOrder]
-
-    static var `default`: DownloadFilterCollection {
-        DownloadFilterCollection(
-            genres: [],
-            years: [],
-            tags: [],
-            itemTypes: [],
-            sortBy: [.dateLastContentAdded],
-            sortOrder: [.descending]
+        filterViewModel.setAvailableFilters(
+            genres: genres,
+            tags: tags,
+            years: years,
+            itemTypes: itemTypes
         )
     }
 }

@@ -144,11 +144,11 @@ struct SeriesEpisodeSelector<ViewModel: SeriesViewModelProtocol>: View {
         .onReceive(viewModel.playButtonItem.publisher) { newValue in
 
             guard !didSelectPlayButtonSeason else { return }
-            didSelectPlayButtonSeason = true
 
             if let playButtonSeason = viewModel.seasons.first(where: { $0.id == newValue.seasonID }) {
                 selection = playButtonSeason.id
-            } else {
+                didSelectPlayButtonSeason = true
+            } else if viewModel.seasons.isNotEmpty {
                 selection = viewModel.seasons.first?.id
             }
         }
@@ -157,6 +157,16 @@ struct SeriesEpisodeSelector<ViewModel: SeriesViewModelProtocol>: View {
 
             if selectionViewModel.state == .initial {
                 selectionViewModel.send(.refresh)
+            }
+        }
+        .onChange(of: viewModel.seasons.map(\.id)) { seasonIDs in
+            if let currentSelection = selection,
+               !seasonIDs.contains(where: { $0 == currentSelection })
+            {
+                // Selection is no longer valid (e.g. season deleted), pick first available
+                selection = seasonIDs.first ?? nil
+            } else if selection == nil, let first = seasonIDs.first {
+                selection = first
             }
         }
         .confirmationDialog(

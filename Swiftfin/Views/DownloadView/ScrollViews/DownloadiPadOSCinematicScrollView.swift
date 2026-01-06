@@ -13,7 +13,6 @@ extension DownloadItemView {
 
     struct DownloadiPadOSCinematicScrollView<Content: View>: View {
 
-        let item: DownloadItemDto
         @ObservedObject
         var viewModel: DownloadItemViewModel
 
@@ -23,17 +22,15 @@ extension DownloadItemView {
         private let content: Content
 
         init(
-            item: DownloadItemDto,
             viewModel: DownloadItemViewModel,
             @ViewBuilder content: () -> Content
         ) {
-            self.item = item
             self.viewModel = viewModel
             self.content = content()
         }
 
         private var imageType: ImageType {
-            switch item.type {
+            switch viewModel.downloadItem.type {
             case .episode, .musicVideo, .video:
                 .primary
             default:
@@ -44,7 +41,7 @@ extension DownloadItemView {
         @ViewBuilder
         private var headerView: some View {
             let bottomColor = Color.secondarySystemFill
-            let imageSource = item.imageSource(imageType, maxWidth: 1920)
+            let imageSource = viewModel.downloadItem.imageSource(imageType, maxWidth: 1920)
 
             ImageView(imageSource)
                 .aspectRatio(1.77, contentMode: .fill)
@@ -57,7 +54,7 @@ extension DownloadItemView {
             ) {
                 headerView
             } overlay: {
-                OverlayView(item: item, viewModel: viewModel)
+                OverlayView(viewModel: viewModel)
                     .edgePadding()
                     .frame(maxWidth: .infinity)
                     .background {
@@ -88,21 +85,20 @@ extension DownloadItemView.DownloadiPadOSCinematicScrollView {
         @Router
         private var router
 
-        let item: DownloadItemDto
         @ObservedObject
         var viewModel: DownloadItemViewModel
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .center, spacing: 10) {
-                    let logoImageSource = item.imageSource(.logo)
+                    let logoImageSource = viewModel.downloadItem.imageSource(.logo)
                     if logoImageSource.url != nil {
                         ImageView(logoImageSource)
                             .placeholder { _ in
                                 EmptyView()
                             }
                             .failure {
-                                MaxHeightText(text: item.displayTitle, maxHeight: 100)
+                                MaxHeightText(text: viewModel.downloadItem.displayTitle, maxHeight: 100)
                                     .font(.largeTitle.weight(.semibold))
                                     .lineLimit(2)
                                     .multilineTextAlignment(.center)
@@ -111,7 +107,7 @@ extension DownloadItemView.DownloadiPadOSCinematicScrollView {
                             .aspectRatio(contentMode: .fit)
                             .frame(height: 100, alignment: .bottom)
                     } else {
-                        MaxHeightText(text: item.displayTitle, maxHeight: 100)
+                        MaxHeightText(text: viewModel.downloadItem.displayTitle, maxHeight: 100)
                             .font(.largeTitle.weight(.semibold))
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
@@ -119,15 +115,15 @@ extension DownloadItemView.DownloadiPadOSCinematicScrollView {
                     }
 
                     DotHStack {
-                        if let firstGenre = item.genres?.first {
+                        if let firstGenre = viewModel.downloadItem.genres?.first {
                             Text(firstGenre)
                         }
 
-                        if let premiereYear = item.premiereDateYear {
+                        if let premiereYear = viewModel.downloadItem.premiereDateYear {
                             Text(premiereYear)
                         }
 
-                        if let runtime = item.runTimeLabel {
+                        if let runtime = viewModel.downloadItem.runTimeLabel {
                             Text(runtime)
                         }
                     }
@@ -136,12 +132,12 @@ extension DownloadItemView.DownloadiPadOSCinematicScrollView {
                     .padding(.horizontal)
 
                     Group {
-                        if item.mediaURL != nil {
-                            DownloadItemView.DownloadPlayButton(item: item)
+                        if viewModel.downloadItem.mediaURL != nil {
+                            DownloadItemView.DownloadPlayButton(item: viewModel.downloadItem)
                                 .frame(height: 50)
                         }
 
-                        DownloadItemView.DownloadActionButtonHStack(item: item)
+                        DownloadItemView.DownloadActionButtonHStack(item: viewModel.downloadItem)
                             .foregroundStyle(.white)
                             .frame(height: 50)
                     }
