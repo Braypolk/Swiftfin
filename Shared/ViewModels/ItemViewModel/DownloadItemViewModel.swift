@@ -175,7 +175,20 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
     }
 
     private func loadDownloadedSeasons(seriesID: String) async -> [BaseItemDto] {
-        let seriesPath = URL.seriesDownloadFolder(seriesID: seriesID)
+        // Try to find series folder using ID (legacy) or Name (new)
+        // Since we only have ID here, we first check legacy path
+        var seriesPath = URL.seriesDownloadFolder(seriesID: seriesID)
+
+        // If legacy path doesn't exist, we need to find the human-readable path
+        // We can scan the "series" directory and check metadata files to find the matching series ID
+        if !FileManager.default.fileExists(atPath: seriesPath.path) {
+            if let path = findSeriesFolder(by: seriesID) {
+                seriesPath = path
+            } else {
+                return []
+            }
+        }
+
         let seasonsPath = seriesPath.appendingPathComponent("seasons")
 
         guard let seasonContents = try? FileManager.default.contentsOfDirectory(atPath: seasonsPath.path) else {
@@ -184,11 +197,11 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
 
         var seasons: [BaseItemDto] = []
 
-        for seasonID in seasonContents {
+        for seasonFolder in seasonContents {
             // Skip hidden files
-            if seasonID.hasPrefix(".") { continue }
+            if seasonFolder.hasPrefix(".") { continue }
 
-            let seasonPath = URL.seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
+            let seasonPath = seasonsPath.appendingPathComponent(seasonFolder)
             let episodesPath = seasonPath.appendingPathComponent("episodes")
 
             // Filter out empty seasons: check if episodes directory exists and has contents
@@ -210,6 +223,28 @@ class DownloadItemViewModel: ObservableObject, ItemViewModelProtocol, SeriesView
         }
 
         return seasons
+    }
+
+    /// Helper to find a series folder by ID when the folder name might be human-readable
+    private func findSeriesFolder(by seriesID: String) -> URL? {
+        let seriesRoot = URL.downloadsSeries
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: seriesRoot.path) else { return nil }
+
+        for folderName in contents {
+            if folderName.hasPrefix(".") { continue }
+
+            let folderURL = seriesRoot.appendingPathComponent(folderName)
+            let metadataPath = folderURL.appendingPathComponent("Metadata").appendingPathComponent("Item.json")
+
+            if let data = FileManager.default.contents(atPath: metadataPath.path),
+               let item = try? JSONDecoder().decode(BaseItemDto.self, from: data),
+               item.id == seriesID
+            {
+                return folderURL
+            }
+        }
+
+        return nil
     }
 
     /// Get download progress for seasons and series (downloaded, total).

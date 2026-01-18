@@ -36,6 +36,9 @@ class DownloadManager: ObservableObject {
     @Injected(\.downloadQueueService)
     private var queueService: DownloadQueueService
 
+    @Injected(\.downloadFileSystemService)
+    private var fileSystemService: DownloadFileSystemService
+
     @Published
     private(set) var state: State = .idle
 
@@ -96,27 +99,11 @@ class DownloadManager: ObservableObject {
     // MARK: - Directory Management
 
     private func createDownloadDirectories() {
-        let directories = [
-            URL.downloads,
-            URL.downloadsMovies,
-            URL.downloadsSeries,
-        ]
-
-        for directory in directories {
-            try? FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true
-            )
-        }
+        fileSystemService.createDownloadDirectories()
     }
 
     func clearTmp() {
-        do {
-            try Folder(path: URL.tmp.path).files.delete()
-            logger.trace("Cleared tmp directory")
-        } catch {
-            logger.error("Unable to clear tmp directory: \(error.localizedDescription)")
-        }
+        fileSystemService.clearTmp()
     }
 
     // MARK: - Queue Management
@@ -572,52 +559,36 @@ class DownloadManager: ObservableObject {
 
     /// Get download status for a season by aggregating child episodes
     func getSeasonDownloadStatus(seasonID: String, seriesID: String) -> AggregatedDownloadStatus {
-        // Get all episodes for this season from CoreStore
-        let allStoredItems = loadStoredItemsFromCoreStore()
-        let seasonEpisodes = allStoredItems.filter { $0.seasonID == seasonID && $0.seriesID == seriesID && $0.type == .episode }
-
-        let downloadedCount = seasonEpisodes.count
-
-        // Count episodes in queue for this season
-        let queuedEpisodes = queue.filter { $0.seasonID == seasonID && $0.seriesID == seriesID && $0.type == .episode }
-        let pendingCount = queuedEpisodes.filter { itemStates[$0.id] == .pending || itemStates[$0.id] == nil }.count
-        let downloadingCount = queuedEpisodes.filter { itemStates[$0.id] == .downloading }.count
-
-        // We need to know the total expected episodes - try to get from API or use downloaded + queued as estimate
-        // For now, use downloaded + queued as total (will be accurate once all are queued)
-        let totalCount = max(downloadedCount + queuedEpisodes.count, downloadedCount)
-
-        let isComplete = totalCount > 0 && downloadedCount == totalCount && queuedEpisodes.isEmpty
-        let isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount
-        let progress = totalCount > 0 ? Double(downloadedCount) / Double(totalCount) : 0.0
-
-        return AggregatedDownloadStatus(
-            totalEpisodes: totalCount,
-            downloadedEpisodes: downloadedCount,
-            pendingEpisodes: pendingCount,
-            downloadingEpisodes: downloadingCount,
-            isComplete: isComplete,
-            isPartiallyDownloaded: isPartiallyDownloaded,
-            progress: progress
-        )
+        aggregateEpisodeStatus { item in
+            item.seasonID == seasonID && item.seriesID == seriesID
+        } queueFilter: { item in
+            item.seasonID == seasonID && item.seriesID == seriesID
+        }
     }
 
     /// Get download status for a series by aggregating all child episodes
     func getSeriesDownloadStatus(seriesID: String) -> AggregatedDownloadStatus {
-        // Get all episodes for this series from CoreStore
+        aggregateEpisodeStatus { item in
+            item.seriesID == seriesID
+        } queueFilter: { item in
+            item.seriesID == seriesID
+        }
+    }
+
+    /// Unified helper to aggregate episode download status based on filter predicates.
+    private func aggregateEpisodeStatus(
+        storedFilter: (StoredDownloadItem) -> Bool,
+        queueFilter: (DownloadQueueItem) -> Bool
+    ) -> AggregatedDownloadStatus {
         let allStoredItems = loadStoredItemsFromCoreStore()
-        let seriesEpisodes = allStoredItems.filter { $0.seriesID == seriesID && $0.type == .episode }
+        let matchingEpisodes = allStoredItems.filter { storedFilter($0) && $0.type == .episode }
+        let downloadedCount = matchingEpisodes.count
 
-        let downloadedCount = seriesEpisodes.count
-
-        // Count episodes in queue for this series
-        let queuedEpisodes = queue.filter { $0.seriesID == seriesID && $0.type == .episode }
+        let queuedEpisodes = queue.filter { queueFilter($0) && $0.type == .episode }
         let pendingCount = queuedEpisodes.filter { itemStates[$0.id] == .pending || itemStates[$0.id] == nil }.count
         let downloadingCount = queuedEpisodes.filter { itemStates[$0.id] == .downloading }.count
 
-        // Use downloaded + queued as total estimate
         let totalCount = max(downloadedCount + queuedEpisodes.count, downloadedCount)
-
         let isComplete = totalCount > 0 && downloadedCount == totalCount && queuedEpisodes.isEmpty
         let isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount
         let progress = totalCount > 0 ? Double(downloadedCount) / Double(totalCount) : 0.0
@@ -732,22 +703,15 @@ class DownloadManager: ObservableObject {
     private func folderPathForItem(id: String, type: BaseItemKind, seriesID: String?, seasonID: String?) -> URL? {
         switch type {
         case .movie:
-            return URL.movieDownloadFolder(itemID: id)
+            return fileSystemService.folderPath(for: id, type: .movie, seriesID: nil, seasonID: nil)
         case .series:
-            return URL.seriesDownloadFolder(seriesID: id)
+            return fileSystemService.folderPath(for: id, type: .series, seriesID: nil, seasonID: nil)
         case .season:
-            guard let seriesID = seriesID else {
-                return nil
-            }
-            return URL.seasonDownloadFolder(seriesID: seriesID, seasonID: id)
+            return fileSystemService.folderPath(for: id, type: .season, seriesID: seriesID, seasonID: nil)
         case .episode:
-            guard let seriesID = seriesID, let seasonID = seasonID else {
-                return nil
-            }
-            return URL.episodeDownloadFolder(seriesID: seriesID, seasonID: seasonID, episodeID: id)
+            return fileSystemService.folderPath(for: id, type: .episode, seriesID: seriesID, seasonID: seasonID)
         default:
-            // For other types, try movies folder
-            return URL.movieDownloadFolder(itemID: id)
+            return fileSystemService.folderPath(for: id, type: .movie, seriesID: nil, seasonID: nil)
         }
     }
 
@@ -764,16 +728,16 @@ class DownloadManager: ObservableObject {
                 domain: "downloads"
             ) {
                 hasCoreStoreEntry = true
-                folderPath = folderPathForItem(
-                    id: storedItem.id,
+                folderPath = fileSystemService.folderPath(
+                    for: storedItem.id,
                     type: storedItem.type,
                     seriesID: storedItem.seriesID,
                     seasonID: storedItem.seasonID
                 )
             } else if let queueItem = queue.first(where: { $0.id == itemID }) {
                 // If not in CoreStore, check the queue for metadata
-                folderPath = folderPathForItem(
-                    id: queueItem.id,
+                folderPath = fileSystemService.folderPath(
+                    for: queueItem.id,
                     type: queueItem.type,
                     seriesID: queueItem.seriesID,
                     seasonID: queueItem.seasonID
@@ -783,17 +747,12 @@ class DownloadManager: ObservableObject {
 
         // 2. Use type-based path lookup since we know the structure
         if folderPath == nil {
-            folderPath = folderPathForItem(id: itemID, type: .movie, seriesID: nil, seasonID: nil)
+            folderPath = fileSystemService.folderPath(for: itemID, type: .movie, seriesID: nil, seasonID: nil)
         }
 
         // 3. Delete files
         if let path = folderPath {
-            do {
-                try FileManager.default.removeItem(at: path)
-                logger.info("Successfully deleted download folder: \(path.path)")
-            } catch {
-                logger.error("Failed to delete download folder \(path.path): \(error.localizedDescription)")
-            }
+            fileSystemService.deleteFolder(at: path)
         }
 
         // 4. Delete from CoreStore

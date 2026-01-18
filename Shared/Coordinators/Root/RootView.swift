@@ -6,6 +6,7 @@
 // Copyright (c) 2025 Jellyfin & Jellyfin Contributors
 //
 
+import Defaults
 import SwiftUI
 import Transmission
 
@@ -18,6 +19,9 @@ struct RootView: View {
     @StateObject
     private var rootCoordinator: RootCoordinator = .init()
 
+    @Default(.offlineMode)
+    private var offlineMode
+
     var body: some View {
         ZStack {
             if rootCoordinator.root.id == RootItem.appLoading.id {
@@ -26,6 +30,7 @@ struct RootView: View {
 
             if rootCoordinator.root.id == RootItem.mainTab.id {
                 RootItem.mainTab.content
+                    .id(offlineMode)
             }
 
             if rootCoordinator.root.id == RootItem.selectUser.id {

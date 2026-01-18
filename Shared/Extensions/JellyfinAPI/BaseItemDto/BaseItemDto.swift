@@ -378,29 +378,41 @@ extension BaseItemDto {
     }
 
     /// Returns the download folder for this item based on its type.
+    /// Uses human-readable names derived from metadata.
     /// The folder structure is hierarchical:
-    /// - movies/{itemID}/
-    /// - series/{seriesID}/
-    /// - series/{seriesID}/seasons/{seasonID}/
-    /// - series/{seriesID}/seasons/{seasonID}/episodes/{episodeID}/
+    /// - movies/{Name (Year)}/
+    /// - series/{SeriesName}/
+    /// - series/{SeriesName}/seasons/{Season X}/
+    /// - series/{SeriesName}/seasons/{Season X}/episodes/{S01E01 - EpisodeName}/
     var downloadFolder: URL? {
-        guard let type, let id else { return nil }
+        guard let type else { return nil }
 
         switch type {
         case .movie:
-            return URL.movieDownloadFolder(itemID: id)
+            return URL.movieDownloadFolder(name: displayTitle, year: productionYear)
         case .series:
-            return URL.seriesDownloadFolder(seriesID: id)
+            return URL.seriesDownloadFolder(seriesName: displayTitle)
         case .season:
-            guard let seriesID = seriesID else { return nil }
-            return URL.seasonDownloadFolder(seriesID: seriesID, seasonID: id)
+            guard let seriesName = seriesName else { return nil }
+            let seasonName = "Season \(indexNumber ?? 0)"
+            return URL.seasonDownloadFolder(seriesName: seriesName, seasonName: seasonName)
         case .episode:
-            guard let seriesID = seriesID, let seasonID = seasonID else { return nil }
-            return URL.episodeDownloadFolder(seriesID: seriesID, seasonID: seasonID, episodeID: id)
+            guard let seriesName = seriesName else { return nil }
+            let seasonName = "Season \(parentIndexNumber ?? 0)"
+            let episodeName = String(format: "S%02dE%02d - %@", parentIndexNumber ?? 0, indexNumber ?? 0, displayTitle)
+            return URL.episodeDownloadFolder(seriesName: seriesName, seasonName: seasonName, episodeName: episodeName)
         default:
             // For other playable types, use movies folder
-            return URL.movieDownloadFolder(itemID: id)
+            return URL.movieDownloadFolder(name: displayTitle, year: productionYear)
         }
+    }
+
+    /// Returns the original filename from the server metadata.
+    /// Extracts the filename from the media source path.
+    var originalMediaFilename: String? {
+        guard let path = mediaSources?.first?.path else { return nil }
+        let fileName = (path as NSString).lastPathComponent
+        return fileName.isEmpty ? nil : fileName
     }
 
     /// Returns `originalTitle` if it is not the same as `displayTitle`

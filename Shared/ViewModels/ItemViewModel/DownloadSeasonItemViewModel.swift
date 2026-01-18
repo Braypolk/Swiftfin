@@ -7,10 +7,11 @@
 //
 
 import Defaults
+import Factory
 import Foundation
 import JellyfinAPI
 
-/// SeasonItemViewModel for downloaded content that loads episodes from local files.
+/// SeasonItemViewModel for downloaded content that loads episodes from CoreStore.
 final class DownloadSeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Identifiable {
 
     let season: BaseItemDto
@@ -32,33 +33,40 @@ final class DownloadSeasonItemViewModel: PagingLibraryViewModel<BaseItemDto>, Id
             return []
         }
 
-        let seasonPath = URL.seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
-        let episodesPath = seasonPath.appendingPathComponent("episodes")
+        let seriesID = self.seriesID
 
-        guard let episodeContents = try? FileManager.default.contentsOfDirectory(atPath: episodesPath.path) else {
-            return []
-        }
-
-        var episodes: [BaseItemDto] = []
-
-        for episodeID in episodeContents {
-            let episodePath = URL.episodeDownloadFolder(
-                seriesID: seriesID,
-                seasonID: seasonID,
-                episodeID: episodeID
-            )
-            let metadataPath = episodePath.appendingPathComponent("Metadata").appendingPathComponent("Item.json")
-
-            guard let data = FileManager.default.contents(atPath: metadataPath.path),
-                  let episode = try? JSONDecoder().decode(BaseItemDto.self, from: data)
-            else {
-                continue
+        // CoreStore must be accessed from the main thread
+        return await MainActor.run {
+            guard let userSession = Container.shared.currentUserSession() else {
+                return []
             }
 
-            episodes.append(episode)
-        }
+            guard let clause = try? AnyStoredData.fetchClause(ownerID: userSession.user.id, domain: "downloads"),
+                  let storedData = try? SwiftfinStore.dataStack.fetchAll(clause)
+            else {
+                return []
+            }
 
-        // Sort by index number
-        return episodes.sorted { ($0.indexNumber ?? -1) < ($1.indexNumber ?? -1) }
+            let episodes = storedData.compactMap { data -> BaseItemDto? in
+                guard let itemData = data.data,
+                      let storedItem = try? JSONDecoder().decode(StoredDownloadItem.self, from: itemData)
+                else {
+                    return nil
+                }
+
+                // Filter for episodes belonging to this season and series
+                guard storedItem.type == .episode,
+                      storedItem.seasonID == seasonID,
+                      storedItem.seriesID == seriesID
+                else {
+                    return nil
+                }
+
+                return storedItem.item
+            }
+
+            // Sort by index number
+            return episodes.sorted { ($0.indexNumber ?? -1) < ($1.indexNumber ?? -1) }
+        }
     }
 }

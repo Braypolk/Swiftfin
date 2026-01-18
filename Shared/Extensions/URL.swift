@@ -36,24 +36,58 @@ extension URL {
         downloads.appendingPathComponent("series")
     }
 
-    /// Returns the download folder for a movie
+    // MARK: - Human-Readable Download Paths
+
+    /// Returns the download folder for a movie using human-readable name
+    static func movieDownloadFolder(name: String, year: Int?) -> URL {
+        let folderName: String
+        if let year {
+            folderName = "\(name) (\(year))"
+        } else {
+            folderName = name
+        }
+        return downloadsMovies.appendingPathComponent(folderName.sanitizedForFilename)
+    }
+
+    /// Returns the download folder for a series using human-readable name
+    static func seriesDownloadFolder(seriesName: String) -> URL {
+        downloadsSeries.appendingPathComponent(seriesName.sanitizedForFilename)
+    }
+
+    /// Returns the download folder for a season within a series
+    static func seasonDownloadFolder(seriesName: String, seasonName: String) -> URL {
+        seriesDownloadFolder(seriesName: seriesName)
+            .appendingPathComponent("seasons")
+            .appendingPathComponent(seasonName.sanitizedForFilename)
+    }
+
+    /// Returns the download folder for an episode within a season
+    static func episodeDownloadFolder(seriesName: String, seasonName: String, episodeName: String) -> URL {
+        seasonDownloadFolder(seriesName: seriesName, seasonName: seasonName)
+            .appendingPathComponent("episodes")
+            .appendingPathComponent(episodeName.sanitizedForFilename)
+    }
+
+    // MARK: - Legacy Download Paths (for existing downloads)
+
+    /// Returns the download folder for a movie by ID (legacy)
     static func movieDownloadFolder(itemID: String) -> URL {
         downloadsMovies.appendingPathComponent(itemID)
     }
 
-    /// Returns the download folder for a series
+    /// Returns the download folder for a series by ID (legacy)
     static func seriesDownloadFolder(seriesID: String) -> URL {
         downloadsSeries.appendingPathComponent(seriesID)
     }
 
-    /// Returns the download folder for a season within a series
+    /// Returns the download folder for a season within a series by IDs (legacy)
     static func seasonDownloadFolder(seriesID: String, seasonID: String) -> URL {
         seriesDownloadFolder(seriesID: seriesID)
             .appendingPathComponent("seasons")
             .appendingPathComponent(seasonID)
     }
 
-    /// Returns the download folder for an episode within a season
+    /// Returns the download folder for an episode within a season by IDs (legacy)
     static func episodeDownloadFolder(seriesID: String, seasonID: String, episodeID: String) -> URL {
         seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
             .appendingPathComponent("episodes")

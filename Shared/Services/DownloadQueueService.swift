@@ -33,33 +33,14 @@ class DownloadQueueService {
         var queue: [DownloadQueueItem] = []
         var priority = 0
 
-        // Ensure series metadata exists
-        if !parentMetadataExists(for: episode, parentType: .series) {
-            queue.append(DownloadQueueItem(
-                id: seriesID,
-                type: .series,
-                name: episode.seriesName ?? seriesID,
-                priority: priority,
-                seriesID: nil,
-                seasonID: nil,
-                isMetadataOnly: true
-            ))
-            priority += 1
-        }
-
-        // Ensure season metadata exists
-        if !parentMetadataExists(for: episode, parentType: .season) {
-            queue.append(DownloadQueueItem(
-                id: seasonID,
-                type: .season,
-                name: episode.seasonName ?? seasonID,
-                priority: priority,
-                seriesID: seriesID,
-                seasonID: nil,
-                isMetadataOnly: true
-            ))
-            priority += 1
-        }
+        // Ensure parent metadata exists using helper
+        ensureParentMetadata(
+            for: episode,
+            seriesID: seriesID,
+            seasonID: seasonID,
+            queue: &queue,
+            priority: &priority
+        )
 
         // Add the episode
         let episodeSize = Int64(episode.mediaSources?.first?.size ?? 0)
@@ -133,26 +114,13 @@ class DownloadQueueService {
         var queue: [DownloadQueueItem] = []
         var priority = 0
 
-        // Ensure series metadata exists
-        if !parentMetadataExists(for: season, parentType: .series) {
-            // Use series name from season if available, otherwise fetch it
-            let seriesName: String?
-            if let existingName = season.seriesName {
-                seriesName = existingName
-            } else {
-                seriesName = try? await fetchItem(itemID: seriesID).name
-            }
-            queue.append(DownloadQueueItem(
-                id: seriesID,
-                type: .series,
-                name: seriesName,
-                priority: priority,
-                seriesID: nil,
-                seasonID: nil,
-                isMetadataOnly: true
-            ))
-            priority += 1
-        }
+        // Ensure parent metadata exists using helper
+        await ensureParentMetadataAsync(
+            for: season,
+            seriesID: seriesID,
+            queue: &queue,
+            priority: &priority
+        )
 
         // Ensure season metadata exists
         if !parentMetadataExists(for: season, parentType: .season) {
@@ -201,6 +169,71 @@ class DownloadQueueService {
 
         logger.info("Built season queue with \(queue.count) items for: \(season.displayTitle) (\(episodes.count) episodes)")
         return queue
+    }
+
+    /// Helper to ensure series metadata is added to queue if missing (synchronous version).
+    private func ensureParentMetadata(
+        for item: BaseItemDto,
+        seriesID: String,
+        seasonID: String,
+        queue: inout [DownloadQueueItem],
+        priority: inout Int
+    ) {
+        // Ensure series metadata exists
+        if !parentMetadataExists(for: item, parentType: .series) {
+            queue.append(DownloadQueueItem(
+                id: seriesID,
+                type: .series,
+                name: item.seriesName ?? seriesID,
+                priority: priority,
+                seriesID: nil,
+                seasonID: nil,
+                isMetadataOnly: true
+            ))
+            priority += 1
+        }
+
+        // Ensure season metadata exists
+        if !parentMetadataExists(for: item, parentType: .season) {
+            queue.append(DownloadQueueItem(
+                id: seasonID,
+                type: .season,
+                name: item.seasonName ?? seasonID,
+                priority: priority,
+                seriesID: seriesID,
+                seasonID: nil,
+                isMetadataOnly: true
+            ))
+            priority += 1
+        }
+    }
+
+    /// Helper to ensure series metadata is added to queue if missing (async version for when name fetch is needed).
+    private func ensureParentMetadataAsync(
+        for item: BaseItemDto,
+        seriesID: String,
+        queue: inout [DownloadQueueItem],
+        priority: inout Int
+    ) async {
+        // Ensure series metadata exists
+        if !parentMetadataExists(for: item, parentType: .series) {
+            let seriesName: String?
+            if let existingName = item.seriesName {
+                seriesName = existingName
+            } else {
+                seriesName = try? await fetchItem(itemID: seriesID).name
+            }
+            queue.append(DownloadQueueItem(
+                id: seriesID,
+                type: .series,
+                name: seriesName,
+                priority: priority,
+                seriesID: nil,
+                seasonID: nil,
+                isMetadataOnly: true
+            ))
+            priority += 1
+        }
     }
 
     func buildSeriesQueue(series: BaseItemDto) async throws -> [DownloadQueueItem] {
@@ -319,32 +352,83 @@ class DownloadQueueService {
     // MARK: - Parent Metadata Checking
 
     /// Checks if parent metadata exists for an item.
+    /// Checks if parent metadata exists for an item.
     func parentMetadataExists(for item: BaseItemDto, parentType: BaseItemKind) -> Bool {
         let metadataPath: URL?
 
+        // We need to construct a temporary parent item to get its download folder
+        // This ensures consistent path logic (whether human-readable or ID-based)
+
         switch parentType {
         case .series:
-            // For series, use the item's own ID if it's a series, otherwise use seriesID
+            // Check if we have the series name to construct a proper path
             let seriesID = (item.type == .series) ? item.id : item.seriesID
+            let seriesName = (item.type == .series) ? item.name : item.seriesName
+
             guard let seriesID = seriesID else { return false }
-            metadataPath = URL.seriesDownloadFolder(seriesID: seriesID)
+
+            // Try legacy path first
+            let legacyPath = URL.seriesDownloadFolder(seriesID: seriesID)
                 .appendingPathComponent("Metadata")
                 .appendingPathComponent("Item.json")
 
+            if FileManager.default.fileExists(atPath: legacyPath.path) {
+                return true
+            }
+
+            // Try new path if name is available
+            if let seriesName = seriesName {
+                let newPath = URL.seriesDownloadFolder(seriesName: seriesName)
+                    .appendingPathComponent("Metadata")
+                    .appendingPathComponent("Item.json")
+                if FileManager.default.fileExists(atPath: newPath.path) {
+                    return true
+                }
+            }
+            return false
+
         case .season:
-            // For season, use the item's own ID if it's a season, otherwise use seasonID
             let seasonID = (item.type == .season) ? item.id : item.seasonID
-            guard let seriesID = item.seriesID, let seasonID = seasonID else { return false }
-            metadataPath = URL.seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
+            let seriesID = item.seriesID
+            let seasonName = (item.type == .season) ? item.name : item.seasonName
+            let seriesName = item.seriesName
+
+            guard let seriesID = seriesID, let seasonID = seasonID else { return false }
+
+            // Try legacy path first
+            let legacyPath = URL.seasonDownloadFolder(seriesID: seriesID, seasonID: seasonID)
                 .appendingPathComponent("Metadata")
                 .appendingPathComponent("Item.json")
+
+            if FileManager.default.fileExists(atPath: legacyPath.path) {
+                return true
+            }
+
+            // Try new path if names are available
+            // Note: We need to reconstruct the season name format "Season X" if not provided
+            if let seriesName = seriesName {
+                let effectiveSeasonName: String
+                if let seasonName = seasonName {
+                    effectiveSeasonName = seasonName
+                } else if let index = item.parentIndexNumber { // Episode's parent index is season number
+                    effectiveSeasonName = "Season \(index)"
+                } else {
+                    return false
+                }
+
+                let newPath = URL.seasonDownloadFolder(seriesName: seriesName, seasonName: effectiveSeasonName)
+                    .appendingPathComponent("Metadata")
+                    .appendingPathComponent("Item.json")
+
+                if FileManager.default.fileExists(atPath: newPath.path) {
+                    return true
+                }
+            }
+            return false
 
         default:
             return false
         }
-
-        guard let path = metadataPath else { return false }
-        return FileManager.default.fileExists(atPath: path.path)
     }
 
     /// Checks if an item is already downloaded in CoreStore.

@@ -407,13 +407,19 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
             do {
                 try FileManager.default.createDirectory(at: downloadFolder, withIntermediateDirectories: true)
 
-                // Determine file extension from item metadata
-                guard let container = item.container, !container.isEmpty else {
-                    continuation.resume(throwing: DownloadError.unknownContainer)
-                    return
+                // Determine filename from item metadata
+                let filename: String
+                if let originalName = item.originalMediaFilename {
+                    filename = originalName.sanitizedForFilename
+                } else {
+                    // Fallback to generic name with container extension
+                    guard let container = item.container, !container.isEmpty else {
+                        continuation.resume(throwing: DownloadError.unknownContainer)
+                        return
+                    }
+                    filename = "Media.\(container)"
                 }
-                let mediaExtension = ".\(container)"
-                let destinationURL = downloadFolder.appendingPathComponent("Media\(mediaExtension)")
+                let destinationURL = downloadFolder.appendingPathComponent(filename)
 
                 // Remove existing file if present
                 try? FileManager.default.removeItem(at: destinationURL)
@@ -437,79 +443,72 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
 
     // MARK: - Images & Metadata
 
+    /// Configuration for downloading an image.
+    private struct ImageDownloadConfig {
+        let imageType: ImageType
+        let stage: DownloadStage
+        let secondaryName: String
+        let maxWidth: CGFloat
+        let applicableTypes: Set<BaseItemKind>
+        /// For backdrop images of episodes, we use the primary image instead.
+        let episodeOverrideType: ImageType?
+    }
+
+    private static let imageConfigs: [ImageDownloadConfig] = [
+        ImageDownloadConfig(
+            imageType: .backdrop,
+            stage: .downloadingBackdropImage,
+            secondaryName: "Backdrop",
+            maxWidth: 600,
+            applicableTypes: [.movie, .series, .episode],
+            episodeOverrideType: .primary
+        ),
+        ImageDownloadConfig(
+            imageType: .primary,
+            stage: .downloadingPrimaryImage,
+            secondaryName: "Primary",
+            maxWidth: 300,
+            applicableTypes: [.movie, .series, .season],
+            episodeOverrideType: nil
+        ),
+        ImageDownloadConfig(
+            imageType: .logo,
+            stage: .downloadingLogoImage,
+            secondaryName: "Logo",
+            maxWidth: 400,
+            applicableTypes: [.movie, .series],
+            episodeOverrideType: nil
+        ),
+    ]
+
     private func downloadBackdropImage() async {
-        guard let type = item.type else { return }
-
-        await MainActor.run {
-            self.stage = .downloadingBackdropImage
-        }
-
-        let imageURL: URL
-
-        switch type {
-        case .movie, .series:
-            guard let url = item.imageSource(.backdrop, maxWidth: 600).url else { return }
-            imageURL = url
-        case .episode:
-            guard let url = item.imageSource(.primary, maxWidth: 600).url else { return }
-            imageURL = url
-        default:
-            return
-        }
-
-        guard let response = try? await userSession.client.download(
-            for: .init(url: imageURL).withResponse(URL.self),
-            delegate: self
-        ) else { return }
-
-        let filename = getImageFilename(from: response, secondary: "Backdrop")
-        saveImage(from: response, filename: filename)
+        await downloadImage(config: Self.imageConfigs[0])
     }
 
     private func downloadPrimaryImage() async {
-        guard let type = item.type else { return }
+        await downloadImage(config: Self.imageConfigs[1])
+    }
+
+    private func downloadLogoImage() async {
+        await downloadImage(config: Self.imageConfigs[2])
+    }
+
+    private func downloadImage(config: ImageDownloadConfig) async {
+        guard let type = item.type, config.applicableTypes.contains(type) else { return }
 
         await MainActor.run {
-            self.stage = .downloadingPrimaryImage
+            self.stage = config.stage
         }
 
-        let imageURL: URL
-
-        switch type {
-        case .movie, .series, .season:
-            guard let url = item.imageSource(.primary, maxWidth: 300).url else { return }
-            imageURL = url
-        default:
-            return
-        }
+        let imageType = (type == .episode && config.episodeOverrideType != nil) ? config.episodeOverrideType! : config.imageType
+        guard let imageURL = item.imageSource(imageType, maxWidth: config.maxWidth).url else { return }
 
         guard let response = try? await userSession.client.download(
             for: .init(url: imageURL).withResponse(URL.self),
             delegate: self
         ) else { return }
 
-        let filename = getImageFilename(from: response, secondary: "Primary")
-        saveImage(from: response, filename: filename)
-    }
-
-    private func downloadLogoImage() async {
-        guard let type = item.type else { return }
-
-        await MainActor.run {
-            self.stage = .downloadingLogoImage
-        }
-
-        // Logo is for movies and series
-        guard type == .movie || type == .series else { return }
-
-        guard let url = item.imageSource(.logo, maxWidth: 400).url else { return }
-
-        guard let response = try? await userSession.client.download(
-            for: .init(url: url).withResponse(URL.self),
-            delegate: self
-        ) else { return }
-
-        let filename = getImageFilename(from: response, secondary: "Logo")
+        let filename = getImageFilename(from: response, secondary: config.secondaryName)
         saveImage(from: response, filename: filename)
     }
 
@@ -578,13 +577,20 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
     }
 
     func getMediaURL() -> URL? {
+        guard let downloadFolder = item.downloadFolder else { return nil }
+
         do {
-            guard let downloadFolder = item.downloadFolder else { return nil }
-            let contents = try FileManager.default.contentsOfDirectory(atPath: downloadFolder.path)
+            let contents = try FileManager.default.contentsOfDirectory(
+                at: downloadFolder,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            )
 
-            guard let mediaFilename = contents.first(where: { $0.starts(with: "Media") }) else { return nil }
-
-            return downloadFolder.appendingPathComponent(mediaFilename)
+            // Find the first file that isn't a directory and isn't a hidden file
+            return contents.first { url in
+                let isHidden = url.lastPathComponent.hasPrefix(".")
+                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                return !isHidden && !isDirectory
+            }
         } catch {
             return nil
         }
@@ -644,7 +650,7 @@ extension DownloadTask: URLSessionDownloadDelegate {
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        _ = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
         DispatchQueue.main.async {
             self.updateProgress(bytesWritten: totalBytesWritten, totalBytes: totalBytesExpectedToWrite)
