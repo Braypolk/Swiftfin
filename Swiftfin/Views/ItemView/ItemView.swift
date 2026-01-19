@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import Defaults
@@ -174,7 +174,7 @@ struct ItemView: View {
             case .content:
                 innerBody
                     .navigationTitle(viewModel.item.displayTitle)
-            case .error(let error):
+            case let .error(error):
                 ErrorView(error: error)
             case .initial, .refreshing:
                 ProgressView()
@@ -222,7 +222,7 @@ struct ItemView: View {
         }
         .onReceive(deleteViewModel.events) { event in
             switch event {
-            case .error(let eventError):
+            case let .error(eventError):
                 error = eventError
                 isPresentingEventAlert = true
             case .deleted:

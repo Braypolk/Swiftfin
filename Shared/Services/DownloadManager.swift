@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import Combine
@@ -75,7 +75,7 @@ class DownloadManager: ObservableObject {
         }
 
         switch Defaults[.lastSignedInUserID] {
-        case .signedIn(let userID):
+        case let .signedIn(userID):
             return userID
         case .signedOut:
             return nil
@@ -166,7 +166,7 @@ class DownloadManager: ObservableObject {
                 newItem.id,
                 ownerID: userID,
                 domain: "downloads"
-            )) != nil {
+            ) as StoredDownloadItem?) != nil {
                 return false
             }
 
@@ -408,8 +408,7 @@ class DownloadManager: ObservableObject {
             return
         }
 
-        guard
-            let nextItem = queue.first(where: { itemStates[$0.id] == .pending })
+        guard let nextItem = queue.first(where: { itemStates[$0.id] == .pending })
         else {
             state = .idle
             return
@@ -498,7 +497,7 @@ class DownloadManager: ObservableObject {
         }
 
         switch result {
-        case .success(let storedItem):
+        case let .success(storedItem):
             // Save to CoreStore immediately (all item types)
             if let userID = currentUserID {
                 do {
@@ -535,7 +534,7 @@ class DownloadManager: ObservableObject {
                 "Completed download: \(storedItem.item.name ?? "Unknown")"
             )
 
-        case .failure(let error):
+        case let .failure(error):
             itemStates[queueItem.id] = .error
             itemProgress.removeValue(forKey: queueItem.id)
             logger.error("Download failed: \(error.localizedDescription)")
@@ -588,10 +587,10 @@ class DownloadManager: ObservableObject {
 
             let items = storedData.compactMap { data -> StoredDownloadItem? in
                 guard let itemData = data.data,
-                    let item = try? JSONDecoder().decode(
-                        StoredDownloadItem.self,
-                        from: itemData
-                    )
+                      let item = try? JSONDecoder().decode(
+                          StoredDownloadItem.self,
+                          from: itemData
+                      )
                 else {
                     return nil
                 }
@@ -642,7 +641,7 @@ class DownloadManager: ObservableObject {
         // Episodes and seasons are accessible via navigation from series, so only include movies/series here
         completedItems =
             allStoredItems
-            .filter { $0.type == .movie || $0.type == .series }
+                .filter { $0.type == .movie || $0.type == .series }
     }
 
     // MARK: - Legacy Compatibility
@@ -662,7 +661,7 @@ class DownloadManager: ObservableObject {
         let downloadingEpisodes: Int
         let isComplete: Bool
         let isPartiallyDownloaded: Bool
-        let progress: Double  // 0.0 to 1.0
+        let progress: Double // 0.0 to 1.0
     }
 
     /// Get download status for a season by aggregating child episodes
@@ -712,7 +711,7 @@ class DownloadManager: ObservableObject {
         )
         let isComplete =
             totalCount > 0 && downloadedCount == totalCount
-            && queuedEpisodes.isEmpty
+                && queuedEpisodes.isEmpty
         let isPartiallyDownloaded =
             downloadedCount > 0 && downloadedCount < totalCount
         let progress =
@@ -735,7 +734,7 @@ class DownloadManager: ObservableObject {
         if let currentTask, currentTask.id == itemID {
             let progress = currentTask.state.progress
             let errorMessage: String?
-            if case .error(let message) = currentTask.state {
+            if case let .error(message) = currentTask.state {
                 errorMessage = message
             } else {
                 errorMessage = nil
@@ -782,7 +781,7 @@ class DownloadManager: ObservableObject {
                 itemID,
                 ownerID: userID,
                 domain: "downloads"
-            )) != nil {
+            ) as StoredDownloadItem?) != nil {
                 return DownloadItemStatus(
                     state: .complete,
                     progress: 1.0,
@@ -801,17 +800,15 @@ class DownloadManager: ObservableObject {
         guard let userID = currentUserID else { return nil }
 
         // Try to get the item from CoreStore, then check the queue if not found
-        guard
-            let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
-                itemID,
-                ownerID: userID,
-                domain: "downloads"
-            )
+        guard let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
+            itemID,
+            ownerID: userID,
+            domain: "downloads"
+        )
         else {
             // Item not in CoreStore, check if it's in queue
             if let queueItem = queue.first(where: { $0.id == itemID }) {
-                if queueItem.type == .season, let seriesID = queueItem.seriesID
-                {
+                if queueItem.type == .season, let seriesID = queueItem.seriesID {
                     return getSeasonDownloadStatus(
                         seasonID: itemID,
                         seriesID: seriesID
@@ -837,12 +834,12 @@ class DownloadManager: ObservableObject {
     /// Get a downloaded episode as DownloadItemDto for offline playback
     func downloadedEpisode(for episode: BaseItemDto) -> StoredDownloadItem? {
         guard let episodeID = episode.id,
-            let userID = currentUserID,
-            let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
-                episodeID,
-                ownerID: userID,
-                domain: "downloads"
-            )
+              let userID = currentUserID,
+              let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
+                  episodeID,
+                  ownerID: userID,
+                  domain: "downloads"
+              )
         else {
             return nil
         }
@@ -911,8 +908,7 @@ class DownloadManager: ObservableObject {
                 domain: "downloads"
             ) {
                 hasCoreStoreEntry = true
-                if let path = fileSystemService.folderPath(for: storedItem.item)
-                {
+                if let path = fileSystemService.folderPath(for: storedItem.item) {
                     pathsToDelete.append(path)
                 }
 

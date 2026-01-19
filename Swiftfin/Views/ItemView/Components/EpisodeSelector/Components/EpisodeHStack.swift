@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import CollectionHStack
@@ -98,10 +98,9 @@ extension SeriesEpisodeSelector {
         }
 
         private func playOffline(episode: BaseItemDto) {
-            guard
-                let downloadedItem = downloadManager.downloadedEpisode(
-                    for: episode
-                )
+            guard let downloadedItem = downloadManager.downloadedEpisode(
+                for: episode
+            )
             else {
                 print("Failed to get downloaded episode")
                 return
@@ -142,7 +141,7 @@ extension SeriesEpisodeSelector {
                 } else {
                     contentView(viewModel: viewModel)
                 }
-            case .error(let error):
+            case let .error(error):
                 ErrorHStack(viewModel: viewModel, error: error)
             case .initial, .refreshing:
                 LoadingHStack()
@@ -197,7 +196,7 @@ extension SeriesEpisodeSelector {
 
         var body: some View {
             CollectionHStack(
-                count: Int.random(in: 2..<5),
+                count: Int.random(in: 2 ..< 5),
                 columns: UIDevice.isPhone ? 1.5 : 3.5
             ) { _ in
                 SeriesEpisodeSelector.LoadingCard()

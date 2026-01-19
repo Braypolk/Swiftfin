@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import Defaults
@@ -48,9 +48,9 @@ extension ItemView {
         private var title: String {
             /// Use the Season/Episode label for the Series ItemView
             if viewModel.item.type == .series,
-                let seriesViewModel = viewModel as? SeriesViewModelProtocol,
-                let seasonEpisodeLabel = seriesViewModel.playButtonItem?
-                    .seasonEpisodeLabel
+               let seriesViewModel = viewModel as? SeriesViewModelProtocol,
+               let seasonEpisodeLabel = seriesViewModel.playButtonItem?
+                   .seasonEpisodeLabel
             {
                 return seasonEpisodeLabel
 
@@ -70,7 +70,7 @@ extension ItemView {
 
         private var source: String? {
             guard let sourceLabel = viewModel.selectedMediaSource?.displayTitle,
-                viewModel.item.mediaSources?.count ?? 0 > 1
+                  viewModel.item.mediaSources?.count ?? 0 > 1
             else {
                 return nil
             }
@@ -132,7 +132,7 @@ extension ItemView {
             }
 
             guard let playButtonItem = viewModel.playButtonItem,
-                let selectedMediaSource = viewModel.selectedMediaSource
+                  let selectedMediaSource = viewModel.selectedMediaSource
             else {
                 logger.error("Play selected with no item or media source")
                 return

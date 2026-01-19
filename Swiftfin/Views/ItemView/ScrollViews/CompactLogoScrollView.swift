@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import SwiftUI
@@ -45,7 +45,7 @@ extension ItemView {
 
             let bottomColor =
                 viewModel.item.blurHash(for: .backdrop)?.averageLinearColor
-                ?? Color.secondarySystemFill
+                    ?? Color.secondarySystemFill
 
             GeometryReader { proxy in
                 ImageView(viewModel.item.imageSource(.backdrop, maxWidth: 1320))
@@ -158,7 +158,7 @@ extension ItemView.CompactLogoScrollView {
                     }
 
                     if let playButtonitem = viewModel.playButtonItem,
-                        let runtime = playButtonitem.runTimeLabel
+                       let runtime = playButtonitem.runTimeLabel
                     {
                         Text(runtime)
                     }

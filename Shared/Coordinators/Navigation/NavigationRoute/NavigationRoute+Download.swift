@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import JellyfinAPI
@@ -17,23 +17,23 @@ extension NavigationRoute {
         id: "downloadLibrary"
     ) {
         #if os(iOS)
-            DownloadPagingLibraryView()
+        DownloadPagingLibraryView()
         #else
-            EmptyView()
+        EmptyView()
         #endif
     }
 
     // MARK: - Download Item
 
     #if os(iOS)
-        static func downloadItem(item: StoredDownloadItem) -> NavigationRoute {
-            NavigationRoute(
-                id: "downloadItem-\(item.id)",
-                withNamespace: { .push(.zoom(sourceID: "item", namespace: $0)) }
-            ) {
-                DownloadItemView(item: item)
-            }
+    static func downloadItem(item: StoredDownloadItem) -> NavigationRoute {
+        NavigationRoute(
+            id: "downloadItem-\(item.id)",
+            withNamespace: { .push(.zoom(sourceID: "item", namespace: $0)) }
+        ) {
+            DownloadItemView(item: item)
         }
+    }
     #endif
 
     // MARK: - Download Queue
@@ -43,11 +43,11 @@ extension NavigationRoute {
         style: .sheet
     ) {
         #if os(iOS)
-            NavigationView {
-                DownloadQueueView(viewModel: DownloadPagingLibraryViewModel())
-            }
+        NavigationView {
+            DownloadQueueView(viewModel: DownloadPagingLibraryViewModel())
+        }
         #else
-            EmptyView()
+        EmptyView()
         #endif
     }
 }

@@ -3,7 +3,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Copyright (c) 2025 Jellyfin & Jellyfin Contributors
+// Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
 import Defaults
@@ -45,14 +45,14 @@ extension ItemView {
 
         private var hasTrailers: Bool {
             if enabledTrailers.contains(.local),
-                let itemViewModel = viewModel as? ItemViewModel,
-                itemViewModel.localTrailers.isNotEmpty
+               let itemViewModel = viewModel as? ItemViewModel,
+               itemViewModel.localTrailers.isNotEmpty
             {
                 return true
             }
 
             if enabledTrailers.contains(.external),
-                viewModel.item.remoteTrailers?.isNotEmpty == true
+               viewModel.item.remoteTrailers?.isNotEmpty == true
             {
                 return true
             }
@@ -116,7 +116,7 @@ extension ItemView {
 
         private func fetchEpisodeCount() async {
             guard let itemID = viewModel.item.id,
-                let itemType = viewModel.item.type
+                  let itemType = viewModel.item.type
             else { return }
 
             do {
@@ -335,8 +335,8 @@ extension ItemView {
                 // MARK: - Select a Version
 
                 if let mediaSources = viewModel.playButtonItem?.mediaSources,
-                    mediaSources.count > 1,
-                    let itemViewModel = viewModel as? ItemViewModel
+                   mediaSources.count > 1,
+                   let itemViewModel = viewModel as? ItemViewModel
                 {
                     VersionMenu(
                         viewModel: itemViewModel,
@@ -380,8 +380,7 @@ extension ItemView {
                 titleVisibility: .visible
             ) {
                 if let count = episodeCount {
-                    Button("Download \(count) Episode\(count == 1 ? "" : "s")")
-                    {
+                    Button("Download \(count) Episode\(count == 1 ? "" : "s")") {
                         confirmDownload()
                     }
                 } else {
