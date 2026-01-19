@@ -63,14 +63,25 @@ extension AnyStoredData {
         let clause = From<AnyStoredData>()
             .where(ownerFilter && keyFilter && domainFilter)
 
-        let values = try SwiftfinStore.dataStack
-            .fetchAll(
-                clause
-            )
-            .compactMap(\.data)
-            .compactMap {
-                try JSONDecoder().decode(Value.self, from: $0)
+        let fetchBlock: () throws -> [Value] = {
+            try SwiftfinStore.dataStack
+                .fetchAll(clause)
+                .compactMap(\.data)
+                .compactMap {
+                    try JSONDecoder().decode(Value.self, from: $0)
+                }
+        }
+
+        let values: [Value]
+        if Thread.isMainThread {
+            values = try fetchBlock()
+        } else {
+            var result: Result<[Value], Error>!
+            DispatchQueue.main.sync {
+                result = Result { try fetchBlock() }
             }
+            values = try result.get()
+        }
 
         assert(values.count < 2, "More than one stored object for same name, id, and domain!")
 

@@ -571,6 +571,12 @@ class DownloadManager: ObservableObject {
 
     /// Load all downloaded items from CoreStore as StoredDownloadItem (cached)
     private func loadStoredItemsFromCoreStore() -> [StoredDownloadItem] {
+        if !Thread.isMainThread {
+            return DispatchQueue.main.sync {
+                loadStoredItemsFromCoreStore()
+            }
+        }
+
         // Return cached items if available
         if let cached = cachedStoredItems, cachedUserID == currentUserID {
             return cached
