@@ -12,7 +12,9 @@ import SwiftUI
 
 extension ItemView {
 
-    struct CinematicScrollView<Content: View>: ScrollContainerView {
+    struct CinematicScrollView<Content: View, ViewModel: ItemViewModelProtocol>:
+        ScrollContainerView
+    {
 
         @Default(.Customization.CinematicItemViewType.usePrimaryImage)
         private var usePrimaryImage
@@ -21,16 +23,25 @@ extension ItemView {
         private var router
 
         @ObservedObject
-        private var viewModel: ItemViewModel
+        private var viewModel: ViewModel
 
         private let content: Content
+        private let onPlay: (() -> Void)?
+        private let onTogglePlayed: () -> Void
+        private let onToggleFavorite: () -> Void
 
         init(
-            viewModel: ItemViewModel,
+            viewModel: ViewModel,
+            onPlay: (() -> Void)? = nil,
+            onTogglePlayed: @escaping () -> Void = {},
+            onToggleFavorite: @escaping () -> Void = {},
             content: @escaping () -> Content
         ) {
             self.content = content()
             self.viewModel = viewModel
+            self.onPlay = onPlay
+            self.onTogglePlayed = onTogglePlayed
+            self.onToggleFavorite = onToggleFavorite
         }
 
         private var imageType: ImageType {
@@ -40,18 +51,30 @@ extension ItemView {
         @ViewBuilder
         private var headerView: some View {
 
-            let bottomColor = viewModel.item.blurHash(for: imageType)?.averageLinearColor ?? Color.secondarySystemFill
+            let bottomColor =
+                viewModel.item.blurHash(for: imageType)?.averageLinearColor
+                ?? Color.secondarySystemFill
 
             GeometryReader { proxy in
-                if proxy.size.height.isZero { EmptyView() }
-                else {
-                    ImageView(viewModel.item.imageSource(
-                        imageType,
-                        maxWidth: usePrimaryImage ? proxy.size.width : 0,
-                        maxHeight: usePrimaryImage ? 0 : proxy.size.height * 0.6
-                    ))
-                    .aspectRatio(usePrimaryImage ? (2 / 3) : 1.77, contentMode: .fill)
-                    .frame(width: proxy.size.width, height: proxy.size.height * 0.6)
+                if proxy.size.height.isZero {
+                    EmptyView()
+                } else {
+                    ImageView(
+                        viewModel.item.imageSource(
+                            imageType,
+                            maxWidth: usePrimaryImage ? proxy.size.width : 0,
+                            maxHeight: usePrimaryImage
+                                ? 0 : proxy.size.height * 0.6
+                        )
+                    )
+                    .aspectRatio(
+                        usePrimaryImage ? (2 / 3) : 1.77,
+                        contentMode: .fill
+                    )
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height * 0.6
+                    )
                     .bottomEdgeGradient(bottomColor: bottomColor)
                 }
             }
@@ -61,24 +84,44 @@ extension ItemView {
             OffsetScrollView(heightRatio: 0.75) {
                 headerView
             } overlay: {
-                OverlayView(viewModel: viewModel)
-                    .edgePadding(.horizontal)
-                    .edgePadding(.bottom)
-                    .frame(maxWidth: .infinity)
-                    .background {
-                        BlurView(style: .systemThinMaterialDark)
-                            .maskLinearGradient {
-                                (location: 0, opacity: 0)
-                                (location: 0.3, opacity: 1)
-                                (location: 1, opacity: 1)
-                            }
-                    }
+                OverlayView(
+                    viewModel: viewModel,
+                    onPlay: onPlay,
+                    onTogglePlayed: onTogglePlayed,
+                    onToggleFavorite: onToggleFavorite
+                )
+                .edgePadding(.horizontal)
+                .edgePadding(.bottom)
+                .frame(maxWidth: .infinity)
+                .background {
+                    BlurView(style: .systemThinMaterialDark)
+                        .maskLinearGradient {
+                            (location: 0, opacity: 0)
+                            (location: 0.3, opacity: 1)
+                            (location: 1, opacity: 1)
+                        }
+                }
             } content: {
                 content
                     .padding(.top, 10)
                     .edgePadding(.bottom)
             }
         }
+    }
+}
+
+extension ItemView.CinematicScrollView where ViewModel == ItemViewModel {
+    init(
+        viewModel: ItemViewModel,
+        content: @escaping () -> Content
+    ) {
+        self.init(
+            viewModel: viewModel,
+            onPlay: nil,
+            onTogglePlayed: { viewModel.send(.toggleIsPlayed) },
+            onToggleFavorite: { viewModel.send(.toggleIsFavorite) },
+            content: content
+        )
     }
 }
 
@@ -95,25 +138,33 @@ extension ItemView.CinematicScrollView {
         @Router
         private var router
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
+        var onPlay: (() -> Void)?
+        var onTogglePlayed: () -> Void
+        var onToggleFavorite: () -> Void
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .center, spacing: 10) {
                     if !usePrimaryImage {
-                        ImageView(viewModel.item.imageURL(.logo, maxHeight: 100))
-                            .placeholder { _ in
-                                EmptyView()
-                            }
-                            .failure {
-                                MaxHeightText(text: viewModel.item.displayTitle, maxHeight: 100)
-                                    .font(.largeTitle.weight(.semibold))
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                                    .foregroundColor(.white)
-                            }
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 100, alignment: .bottom)
+                        ImageView(
+                            viewModel.item.imageURL(.logo, maxHeight: 100)
+                        )
+                        .placeholder { _ in
+                            EmptyView()
+                        }
+                        .failure {
+                            MaxHeightText(
+                                text: viewModel.item.displayTitle,
+                                maxHeight: 100
+                            )
+                            .font(.largeTitle.weight(.semibold))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white)
+                        }
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 100, alignment: .bottom)
                     }
 
                     DotHStack {
@@ -125,7 +176,9 @@ extension ItemView.CinematicScrollView {
                             Text(premiereYear)
                         }
 
-                        if let playButtonitem = viewModel.playButtonItem, let runtime = playButtonitem.runTimeLabel {
+                        if let playButtonitem = viewModel.playButtonItem,
+                            let runtime = playButtonitem.runTimeLabel
+                        {
                             Text(runtime)
                         }
                     }
@@ -135,13 +188,20 @@ extension ItemView.CinematicScrollView {
 
                     Group {
                         if viewModel.item.presentPlayButton {
-                            ItemView.PlayButton(viewModel: viewModel)
-                                .frame(height: 50)
+                            ItemView.PlayButton(
+                                viewModel: viewModel,
+                                onPlay: onPlay
+                            )
+                            .frame(height: 50)
                         }
 
-                        ItemView.ActionButtonHStack(viewModel: viewModel)
-                            .foregroundStyle(.white)
-                            .frame(height: 50)
+                        ItemView.ActionButtonHStack(
+                            viewModel: viewModel,
+                            onTogglePlayed: onTogglePlayed,
+                            onToggleFavorite: onToggleFavorite
+                        )
+                        .foregroundStyle(.white)
+                        .frame(height: 50)
                     }
                     .frame(maxWidth: 300)
                 }

@@ -12,7 +12,9 @@ import SwiftUI
 
 extension ItemView {
 
-    struct SimpleScrollView<Content: View>: ScrollContainerView {
+    struct SimpleScrollView<Content: View, ViewModel: ItemViewModelProtocol>:
+        ScrollContainerView
+    {
 
         @StoredValue(.User.itemViewAttributes)
         private var attributes
@@ -21,16 +23,25 @@ extension ItemView {
         private var router
 
         @ObservedObject
-        private var viewModel: ItemViewModel
+        private var viewModel: ViewModel
 
         private let content: Content
+        private let onPlay: (() -> Void)?
+        private let onTogglePlayed: () -> Void
+        private let onToggleFavorite: () -> Void
 
         init(
-            viewModel: ItemViewModel,
-            @ViewBuilder content: () -> Content
+            viewModel: ViewModel,
+            onPlay: (() -> Void)? = nil,
+            onTogglePlayed: @escaping () -> Void = {},
+            onToggleFavorite: @escaping () -> Void = {},
+            content: @escaping () -> Content
         ) {
             self.content = content()
             self.viewModel = viewModel
+            self.onPlay = onPlay
+            self.onTogglePlayed = onTogglePlayed
+            self.onToggleFavorite = onToggleFavorite
         }
 
         @ViewBuilder
@@ -54,7 +65,9 @@ extension ItemView {
                     .padding(.horizontal)
 
                 DotHStack {
-                    if let seasonEpisodeLabel = viewModel.item.seasonEpisodeLabel {
+                    if let seasonEpisodeLabel = viewModel.item
+                        .seasonEpisodeLabel
+                    {
                         Text(seasonEpisodeLabel)
                     }
 
@@ -78,12 +91,19 @@ extension ItemView {
                     )
 
                     if viewModel.item.presentPlayButton {
-                        ItemView.PlayButton(viewModel: viewModel)
-                            .frame(height: 50)
+                        ItemView.PlayButton(
+                            viewModel: viewModel,
+                            onPlay: onPlay
+                        )
+                        .frame(height: 50)
                     }
 
-                    ItemView.ActionButtonHStack(viewModel: viewModel)
-                        .frame(height: 50)
+                    ItemView.ActionButtonHStack(
+                        viewModel: viewModel,
+                        onTogglePlayed: onTogglePlayed,
+                        onToggleFavorite: onToggleFavorite
+                    )
+                    .frame(height: 50)
                 }
                 .frame(maxWidth: 300)
             }
@@ -107,10 +127,14 @@ extension ItemView {
                     Rectangle()
                         .fill(.complexSecondary)
 
-                    ImageView(viewModel.item.imageSource(imageType, maxWidth: 600))
-                        .failure {
-                            SystemImageContentView(systemName: viewModel.item.systemImage)
-                        }
+                    ImageView(
+                        viewModel.item.imageSource(imageType, maxWidth: 600)
+                    )
+                    .failure {
+                        SystemImageContentView(
+                            systemName: viewModel.item.systemImage
+                        )
+                    }
                 }
                 .frame(maxHeight: 300)
                 .posterStyle(.landscape)
@@ -142,5 +166,20 @@ extension ItemView {
                 }
             }
         }
+    }
+}
+
+extension ItemView.SimpleScrollView where ViewModel == ItemViewModel {
+    init(
+        viewModel: ItemViewModel,
+        content: @escaping () -> Content
+    ) {
+        self.init(
+            viewModel: viewModel,
+            onPlay: nil,
+            onTogglePlayed: { viewModel.send(.toggleIsPlayed) },
+            onToggleFavorite: { viewModel.send(.toggleIsFavorite) },
+            content: content
+        )
     }
 }

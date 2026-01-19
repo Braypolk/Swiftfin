@@ -16,8 +16,15 @@ struct ItemView: View {
     protocol ScrollContainerView: View {
 
         associatedtype Content: View
+        associatedtype ViewModelType: ItemViewModelProtocol
 
-        init(viewModel: ItemViewModel, content: @escaping () -> Content)
+        init(
+            viewModel: ViewModelType,
+            onPlay: (() -> Void)?,
+            onTogglePlayed: @escaping () -> Void,
+            onToggleFavorite: @escaping () -> Void,
+            content: @escaping () -> Content
+        )
     }
 
     @Default(.Customization.itemViewType)
@@ -41,14 +48,20 @@ struct ItemView: View {
     // MARK: - Can Delete Item
 
     private var canDelete: Bool {
-        viewModel.userSession?.user.permissions.items.canDelete(item: viewModel.item) == true
+        viewModel.userSession?.user.permissions.items.canDelete(
+            item: viewModel.item
+        ) == true
     }
 
     // MARK: - Can Edit Item
 
     private var canEdit: Bool {
-        viewModel.userSession?.user.permissions.items.canEditMetadata(item: viewModel.item) == true ||
-            viewModel.userSession?.user.permissions.items.canManageSubtitles(item: viewModel.item) == true
+        viewModel.userSession?.user.permissions.items.canEditMetadata(
+            item: viewModel.item
+        ) == true
+            || viewModel.userSession?.user.permissions.items.canManageSubtitles(
+                item: viewModel.item
+            ) == true
 
         // TODO: Enable whenLyric Editing is added
         // || viewModel.userSession.user.permissions.items.canManageLyrics(item: viewModel.item)
@@ -79,15 +92,21 @@ struct ItemView: View {
     }
 
     init(item: BaseItemDto) {
-        self._viewModel = StateObject(wrappedValue: Self.typeViewModel(for: item))
-        self._deleteViewModel = StateObject(wrappedValue: DeleteItemViewModel(item: item))
+        self._viewModel = StateObject(
+            wrappedValue: Self.typeViewModel(for: item)
+        )
+        self._deleteViewModel = StateObject(
+            wrappedValue: DeleteItemViewModel(item: item)
+        )
     }
 
     @ViewBuilder
     private var scrollContentView: some View {
         switch viewModel.item.type {
         case .boxSet, .person, .musicArtist:
-            CollectionItemContentView(viewModel: viewModel as! CollectionItemViewModel)
+            CollectionItemContentView(
+                viewModel: viewModel as! CollectionItemViewModel
+            )
         case .episode, .musicVideo, .video:
             SimpleItemContentView(viewModel: viewModel)
         case .movie:
@@ -106,21 +125,36 @@ struct ItemView: View {
     ) -> any ScrollContainerView {
 
         if UIDevice.isPad {
-            return iPadOSCinematicScrollView(viewModel: viewModel, content: content)
+            return iPadOSCinematicScrollView(
+                viewModel: viewModel,
+                content: content
+            )
         }
 
         switch viewModel.item.type {
         case .movie, .series:
             switch itemViewType {
             case .compactPoster:
-                return CompactPosterScrollView(viewModel: viewModel, content: content)
+                return CompactPosterScrollView(
+                    viewModel: viewModel,
+                    content: content
+                )
             case .compactLogo:
-                return CompactLogoScrollView(viewModel: viewModel, content: content)
+                return CompactLogoScrollView(
+                    viewModel: viewModel,
+                    content: content
+                )
             case .cinematic:
-                return CinematicScrollView(viewModel: viewModel, content: content)
+                return CinematicScrollView(
+                    viewModel: viewModel,
+                    content: content
+                )
             }
         case .person, .musicArtist:
-            return CompactPosterScrollView(viewModel: viewModel, content: content)
+            return CompactPosterScrollView(
+                viewModel: viewModel,
+                content: content
+            )
         default:
             return SimpleScrollView(viewModel: viewModel, content: content)
         }
@@ -140,7 +174,7 @@ struct ItemView: View {
             case .content:
                 innerBody
                     .navigationTitle(viewModel.item.displayTitle)
-            case let .error(error):
+            case .error(let error):
                 ErrorView(error: error)
             case .initial, .refreshing:
                 ProgressView()
@@ -166,7 +200,11 @@ struct ItemView: View {
 
             if canDelete {
                 Section {
-                    Button(L10n.delete, systemImage: "trash", role: .destructive) {
+                    Button(
+                        L10n.delete,
+                        systemImage: "trash",
+                        role: .destructive
+                    ) {
                         isPresentingConfirmationDialog = true
                     }
                 }
@@ -184,7 +222,7 @@ struct ItemView: View {
         }
         .onReceive(deleteViewModel.events) { event in
             switch event {
-            case let .error(eventError):
+            case .error(let eventError):
                 error = eventError
                 isPresentingEventAlert = true
             case .deleted:

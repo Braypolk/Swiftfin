@@ -24,6 +24,8 @@ protocol ItemViewModelProtocol: ObservableObject {
     var additionalParts: [BaseItemDto] { get }
 
     var seriesItem: BaseItemDto? { get }
+
+    var playButtonItem: BaseItemDto? { get }
 }
 
 extension ItemViewModelProtocol {
@@ -31,10 +33,11 @@ extension ItemViewModelProtocol {
     var specialFeatures: [BaseItemDto] { [] }
     var additionalParts: [BaseItemDto] { [] }
     var seriesItem: BaseItemDto? { nil }
+    var playButtonItem: BaseItemDto? { nil }
 }
 
 /// Protocol for view models that support series with seasons.
 protocol SeriesViewModelProtocol: ItemViewModelProtocol {
     var seasons: IdentifiedArrayOf<SeasonItemViewModel> { get }
-    var playButtonItem: BaseItemDto? { get }
+    // playButtonItem is now in base protocol
 }

@@ -10,33 +10,51 @@ import SwiftUI
 
 extension ItemView {
 
-    struct CompactLogoScrollView<Content: View>: ScrollContainerView {
+    struct CompactLogoScrollView<
+        Content: View,
+        ViewModel: ItemViewModelProtocol
+    >: ScrollContainerView {
 
         @Router
         private var router
 
         @ObservedObject
-        private var viewModel: ItemViewModel
+        private var viewModel: ViewModel
 
         private let content: Content
+        private let onPlay: (() -> Void)?
+        private let onTogglePlayed: () -> Void
+        private let onToggleFavorite: () -> Void
 
         init(
-            viewModel: ItemViewModel,
+            viewModel: ViewModel,
+            onPlay: (() -> Void)? = nil,
+            onTogglePlayed: @escaping () -> Void = {},
+            onToggleFavorite: @escaping () -> Void = {},
             content: @escaping () -> Content
         ) {
             self.content = content()
             self.viewModel = viewModel
+            self.onPlay = onPlay
+            self.onTogglePlayed = onTogglePlayed
+            self.onToggleFavorite = onToggleFavorite
         }
 
         @ViewBuilder
         private var headerView: some View {
 
-            let bottomColor = viewModel.item.blurHash(for: .backdrop)?.averageLinearColor ?? Color.secondarySystemFill
+            let bottomColor =
+                viewModel.item.blurHash(for: .backdrop)?.averageLinearColor
+                ?? Color.secondarySystemFill
 
             GeometryReader { proxy in
                 ImageView(viewModel.item.imageSource(.backdrop, maxWidth: 1320))
                     .aspectRatio(1.77, contentMode: .fill)
-                    .frame(width: proxy.size.width, height: proxy.size.height * 0.70, alignment: .top)
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height * 0.70,
+                        alignment: .top
+                    )
                     .bottomEdgeGradient(bottomColor: bottomColor)
             }
         }
@@ -45,17 +63,22 @@ extension ItemView {
             OffsetScrollView(heightRatio: 0.5) {
                 headerView
             } overlay: {
-                OverlayView(viewModel: viewModel)
-                    .edgePadding(.horizontal)
-                    .edgePadding(.bottom)
-                    .frame(maxWidth: .infinity)
-                    .background {
-                        BlurView(style: .systemThinMaterialDark)
-                            .maskLinearGradient {
-                                (location: 0, opacity: 0)
-                                (location: 0.3, opacity: 1)
-                            }
-                    }
+                OverlayView(
+                    viewModel: viewModel,
+                    onPlay: onPlay,
+                    onTogglePlayed: onTogglePlayed,
+                    onToggleFavorite: onToggleFavorite
+                )
+                .edgePadding(.horizontal)
+                .edgePadding(.bottom)
+                .frame(maxWidth: .infinity)
+                .background {
+                    BlurView(style: .systemThinMaterialDark)
+                        .maskLinearGradient {
+                            (location: 0, opacity: 0)
+                            (location: 0.3, opacity: 1)
+                        }
+                }
             } content: {
                 SeparatorVStack(alignment: .leading) {
                     RowDivider()
@@ -75,6 +98,21 @@ extension ItemView {
     }
 }
 
+extension ItemView.CompactLogoScrollView where ViewModel == ItemViewModel {
+    init(
+        viewModel: ItemViewModel,
+        content: @escaping () -> Content
+    ) {
+        self.init(
+            viewModel: viewModel,
+            onPlay: nil,
+            onTogglePlayed: { viewModel.send(.toggleIsPlayed) },
+            onToggleFavorite: { viewModel.send(.toggleIsFavorite) },
+            content: content
+        )
+    }
+}
+
 extension ItemView.CompactLogoScrollView {
 
     struct OverlayView: View {
@@ -86,7 +124,10 @@ extension ItemView.CompactLogoScrollView {
         private var router
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
+        var onPlay: (() -> Void)?
+        var onTogglePlayed: () -> Void
+        var onToggleFavorite: () -> Void
 
         var body: some View {
             VStack(alignment: .center, spacing: 10) {
@@ -95,11 +136,14 @@ extension ItemView.CompactLogoScrollView {
                         EmptyView()
                     }
                     .failure {
-                        MaxHeightText(text: viewModel.item.displayTitle, maxHeight: 70)
-                            .font(.largeTitle.weight(.semibold))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(.white)
+                        MaxHeightText(
+                            text: viewModel.item.displayTitle,
+                            maxHeight: 70
+                        )
+                        .font(.largeTitle.weight(.semibold))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.white)
                     }
                     .aspectRatio(contentMode: .fit)
                     .frame(height: 70, alignment: .bottom)
@@ -113,7 +157,9 @@ extension ItemView.CompactLogoScrollView {
                         Text(premiereYear)
                     }
 
-                    if let playButtonitem = viewModel.playButtonItem, let runtime = playButtonitem.runTimeLabel {
+                    if let playButtonitem = viewModel.playButtonItem,
+                        let runtime = playButtonitem.runTimeLabel
+                    {
                         Text(runtime)
                     }
                 }
@@ -128,13 +174,20 @@ extension ItemView.CompactLogoScrollView {
                     )
 
                     if viewModel.item.presentPlayButton {
-                        ItemView.PlayButton(viewModel: viewModel)
-                            .frame(height: 50)
+                        ItemView.PlayButton(
+                            viewModel: viewModel,
+                            onPlay: onPlay
+                        )
+                        .frame(height: 50)
                     }
 
-                    ItemView.ActionButtonHStack(viewModel: viewModel)
-                        .foregroundStyle(.white)
-                        .frame(height: 50)
+                    ItemView.ActionButtonHStack(
+                        viewModel: viewModel,
+                        onTogglePlayed: onTogglePlayed,
+                        onToggleFavorite: onToggleFavorite
+                    )
+                    .foregroundStyle(.white)
+                    .frame(height: 50)
                 }
                 .frame(maxWidth: 300)
             }

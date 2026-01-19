@@ -7,6 +7,7 @@
 //
 
 import Combine
+import Defaults
 import Factory
 import Files
 import Foundation
@@ -14,7 +15,9 @@ import JellyfinAPI
 import Logging
 
 extension Container {
-    var downloadManager: Factory<DownloadManager> { self { DownloadManager() }.shared }
+    var downloadManager: Factory<DownloadManager> {
+        self { DownloadManager() }.shared
+    }
 }
 
 // MARK: - DownloadManager
@@ -65,10 +68,24 @@ class DownloadManager: ObservableObject {
     private var currentTaskCancellable: AnyCancellable?
 
     private var cachedStoredItems: [StoredDownloadItem]?
+    private var cachedUserID: String?
+    private var currentUserID: String? {
+        if let user = Container.shared.currentUserSession()?.user {
+            return user.id
+        }
+
+        switch Defaults[.lastSignedInUserID] {
+        case .signedIn(let userID):
+            return userID
+        case .signedOut:
+            return nil
+        }
+    }
 
     // MARK: - Initialization
 
     fileprivate init() {
+        observeUserSessionChanges()
         createDownloadDirectories()
         loadPersistedQueue()
         loadCompletedItems()
@@ -87,10 +104,15 @@ class DownloadManager: ObservableObject {
         for item in queue {
             if itemStates[item.id] == .paused {
                 // Load persisted progress
-                let bytesDownloaded = StoredValues[.User.downloadBytesDownloaded(itemID: item.id)]
-                let totalBytes = StoredValues[.User.downloadTotalBytes(itemID: item.id)]
+                let bytesDownloaded = StoredValues[
+                    .User.downloadBytesDownloaded(itemID: item.id)
+                ]
+                let totalBytes = StoredValues[
+                    .User.downloadTotalBytes(itemID: item.id)
+                ]
                 if totalBytes > 0 {
-                    itemProgress[item.id] = Double(bytesDownloaded) / Double(totalBytes)
+                    itemProgress[item.id] =
+                        Double(bytesDownloaded) / Double(totalBytes)
                 }
             }
         }
@@ -117,13 +139,15 @@ class DownloadManager: ObservableObject {
                     addToQueue(queueItems)
                 }
             } catch {
-                logger.error("Failed to build queue for item: \(error.localizedDescription)")
+                logger.error(
+                    "Failed to build queue for item: \(error.localizedDescription)"
+                )
             }
         }
     }
 
     private func addToQueue(_ items: [DownloadQueueItem]) {
-        guard let userSession = Container.shared.currentUserSession() else { return }
+        guard let userID = currentUserID else { return }
 
         // Filter out items already in queue, completed items array, or CoreStore
         let newItems = items.filter { newItem in
@@ -138,11 +162,11 @@ class DownloadManager: ObservableObject {
             }
 
             // Skip if already downloaded (check CoreStore for all item types including episodes)
-            if let _: StoredDownloadItem = try? AnyStoredData.fetch(
+            if (try? AnyStoredData.fetch(
                 newItem.id,
-                ownerID: userSession.user.id,
+                ownerID: userID,
                 domain: "downloads"
-            ) {
+            )) != nil {
                 return false
             }
 
@@ -177,7 +201,8 @@ class DownloadManager: ObservableObject {
 
     func resume(itemID: String) {
         // Check if there's resume data available
-        let hasResumeData = StoredValues[.User.downloadResumeInfo(itemID: itemID)] != nil
+        let hasResumeData =
+            StoredValues[.User.downloadResumeInfo(itemID: itemID)] != nil
 
         itemStates[itemID] = .pending
         persistQueue()
@@ -213,10 +238,12 @@ class DownloadManager: ObservableObject {
     }
 
     func deleteGroup(id: String) {
-        guard let userSession = Container.shared.currentUserSession() else { return }
+        guard let userID = currentUserID else { return }
 
         // Find all items in this group from the queue
-        let queuedItemsInGroup = queue.filter { $0.id == id || $0.groupId == id }
+        let queuedItemsInGroup = queue.filter {
+            $0.id == id || $0.groupId == id
+        }
 
         // Handle cases where deletion affects series or seasons
         var childrenIDs: Set<String> = []
@@ -228,12 +255,18 @@ class DownloadManager: ObservableObject {
             }
         }
 
-        let allIDsToDelete = Set(queuedItemsInGroup.map(\.id)).union(childrenIDs).union([id])
+        let allIDsToDelete = Set(queuedItemsInGroup.map(\.id)).union(
+            childrenIDs
+        ).union([id])
 
         for itemID in allIDsToDelete {
             var itemType: BaseItemKind?
             var seriesID: String?
-            if let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(itemID, ownerID: userSession.user.id, domain: "downloads") {
+            if let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
+                itemID,
+                ownerID: userID,
+                domain: "downloads"
+            ) {
                 itemType = storedItem.type
                 seriesID = storedItem.seriesID
             } else if let queueItem = queue.first(where: { $0.id == itemID }) {
@@ -245,7 +278,10 @@ class DownloadManager: ObservableObject {
                 switch type {
                 case .season:
                     if let seriesID = seriesID {
-                        deleteSeasonEpisodes(seasonID: itemID, seriesID: seriesID)
+                        deleteSeasonEpisodes(
+                            seasonID: itemID,
+                            seriesID: seriesID
+                        )
                     }
                 case .series:
                     deleteSeriesContent(seriesID: itemID)
@@ -260,8 +296,12 @@ class DownloadManager: ObservableObject {
 
             BackgroundDownloadSession.shared.cancelDownload(itemID: itemID)
 
-            if let resumeInfo = StoredValues[.User.downloadResumeInfo(itemID: itemID)] {
-                BackgroundDownloadSession.shared.deleteResumeData(resumeInfo.resumeData)
+            if let resumeInfo = StoredValues[
+                .User.downloadResumeInfo(itemID: itemID)
+            ] {
+                BackgroundDownloadSession.shared.deleteResumeData(
+                    resumeInfo.resumeData
+                )
             }
             StoredValues[.User.downloadResumeInfo(itemID: itemID)] = nil
             StoredValues[.User.downloadBytesDownloaded(itemID: itemID)] = 0
@@ -288,7 +328,10 @@ class DownloadManager: ObservableObject {
 
     private func deleteSeasonEpisodes(seasonID: String, seriesID: String) {
         let allStoredItems = loadStoredItemsFromCoreStore()
-        let seasonEpisodes = allStoredItems.filter { $0.seasonID == seasonID && $0.seriesID == seriesID && $0.type == .episode }
+        let seasonEpisodes = allStoredItems.filter {
+            $0.seasonID == seasonID && $0.seriesID == seriesID
+                && $0.type == .episode
+        }
 
         // Delete each episode
         for episode in seasonEpisodes {
@@ -304,7 +347,10 @@ class DownloadManager: ObservableObject {
         }
 
         // Also remove any queued episodes for this season
-        let queuedEpisodes = queue.filter { $0.seasonID == seasonID && $0.seriesID == seriesID && $0.type == .episode }
+        let queuedEpisodes = queue.filter {
+            $0.seasonID == seasonID && $0.seriesID == seriesID
+                && $0.type == .episode
+        }
         for queuedEpisode in queuedEpisodes {
             queue.removeAll(where: { $0.id == queuedEpisode.id })
             itemStates.removeValue(forKey: queuedEpisode.id)
@@ -317,8 +363,12 @@ class DownloadManager: ObservableObject {
 
     private func deleteSeriesContent(seriesID: String) {
         let allStoredItems = loadStoredItemsFromCoreStore()
-        let seriesEpisodes = allStoredItems.filter { $0.seriesID == seriesID && $0.type == .episode }
-        let seriesSeasons = allStoredItems.filter { $0.seriesID == seriesID && $0.type == .season }
+        let seriesEpisodes = allStoredItems.filter {
+            $0.seriesID == seriesID && $0.type == .episode
+        }
+        let seriesSeasons = allStoredItems.filter {
+            $0.seriesID == seriesID && $0.type == .season
+        }
 
         // Delete all episodes
         for episode in seriesEpisodes {
@@ -354,9 +404,13 @@ class DownloadManager: ObservableObject {
     // MARK: - Queue Processing
 
     private func processNextInQueue() {
-        guard currentTask == nil || currentTask?.state.isActive == false else { return }
+        guard currentTask == nil || currentTask?.state.isActive == false else {
+            return
+        }
 
-        guard let nextItem = queue.first(where: { itemStates[$0.id] == .pending }) else {
+        guard
+            let nextItem = queue.first(where: { itemStates[$0.id] == .pending })
+        else {
             state = .idle
             return
         }
@@ -368,7 +422,9 @@ class DownloadManager: ObservableObject {
         Task {
             do {
                 // Fetch the full item from the API
-                let item = try await queueService.fetchItem(itemID: queueItem.id)
+                let item = try await queueService.fetchItem(
+                    itemID: queueItem.id
+                )
 
                 await MainActor.run {
                     let task = DownloadTask(item: item, queueItem: queueItem)
@@ -376,21 +432,25 @@ class DownloadManager: ObservableObject {
                     // Set up completion handler
                     task.onComplete = { [weak self] result in
                         Task { @MainActor in
-                            self?.handleDownloadCompletion(queueItem: queueItem, result: result)
+                            self?.handleDownloadCompletion(
+                                queueItem: queueItem,
+                                result: result
+                            )
                         }
                     }
 
                     currentTaskCancellable = task.$state
                         .receive(on: RunLoop.main)
                         .sink { [weak self] taskState in
-                            let itemState: DownloadItemState = switch taskState {
-                            case .pending: .pending
-                            case .downloading: .downloading
-                            case .paused: .paused
-                            case .complete: .complete
-                            case .error: .error
-                            case .cancelled: .cancelled
-                            }
+                            let itemState: DownloadItemState =
+                                switch taskState {
+                                case .pending: .pending
+                                case .downloading: .downloading
+                                case .paused: .paused
+                                case .complete: .complete
+                                case .error: .error
+                                case .cancelled: .cancelled
+                                }
                             self?.itemStates[queueItem.id] = itemState
                             if let progress = taskState.progress {
                                 self?.itemProgress[queueItem.id] = progress
@@ -402,7 +462,10 @@ class DownloadManager: ObservableObject {
                     itemStates[queueItem.id] = .downloading
 
                     // Check if there's resume data for this item
-                    let hasResumeData = StoredValues[.User.downloadResumeInfo(itemID: queueItem.id)] != nil
+                    let hasResumeData =
+                        StoredValues[
+                            .User.downloadResumeInfo(itemID: queueItem.id)
+                        ] != nil
                     if hasResumeData {
                         task.resumeFromPaused()
                     } else {
@@ -412,7 +475,9 @@ class DownloadManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     itemStates[queueItem.id] = .error
-                    logger.error("Failed to fetch item for download: \(error.localizedDescription)")
+                    logger.error(
+                        "Failed to fetch item for download: \(error.localizedDescription)"
+                    )
                     processNextInQueue()
                 }
             }
@@ -420,27 +485,34 @@ class DownloadManager: ObservableObject {
     }
 
     @MainActor
-    private func handleDownloadCompletion(queueItem: DownloadQueueItem, result: Result<StoredDownloadItem, Error>) {
+    private func handleDownloadCompletion(
+        queueItem: DownloadQueueItem,
+        result: Result<StoredDownloadItem, Error>
+    ) {
         // Guard against deleted items (check if still in queue)
         guard queue.contains(where: { $0.id == queueItem.id }) else {
-            logger.info("Ignoring completion for deleted item: \(queueItem.name ?? "Unknown")")
+            logger.info(
+                "Ignoring completion for deleted item: \(queueItem.name ?? "Unknown")"
+            )
             return
         }
 
         switch result {
-        case let .success(storedItem):
+        case .success(let storedItem):
             // Save to CoreStore immediately (all item types)
-            if let userSession = Container.shared.currentUserSession() {
+            if let userID = currentUserID {
                 do {
                     try AnyStoredData.store(
                         value: storedItem,
                         key: storedItem.id,
-                        ownerID: userSession.user.id,
+                        ownerID: userID,
                         domain: "downloads"
                     )
                     invalidateCache()
                 } catch {
-                    logger.error("Failed to save downloaded item to CoreStore: \(error.localizedDescription)")
+                    logger.error(
+                        "Failed to save downloaded item to CoreStore: \(error.localizedDescription)"
+                    )
                 }
             }
 
@@ -459,9 +531,11 @@ class DownloadManager: ObservableObject {
             itemStates[queueItem.id] = .complete
             itemProgress[queueItem.id] = 1.0
 
-            logger.info("Completed download: \(storedItem.item.name ?? "Unknown")")
+            logger.info(
+                "Completed download: \(storedItem.item.name ?? "Unknown")"
+            )
 
-        case let .failure(error):
+        case .failure(let error):
             itemStates[queueItem.id] = .error
             itemProgress.removeValue(forKey: queueItem.id)
             logger.error("Download failed: \(error.localizedDescription)")
@@ -491,26 +565,33 @@ class DownloadManager: ObservableObject {
         queue = StoredValues[.User.downloadQueue]
 
         for item in queue {
-            itemStates[item.id] = StoredValues[.User.downloadState(itemID: item.id)]
+            itemStates[item.id] =
+                StoredValues[.User.downloadState(itemID: item.id)]
         }
     }
 
     /// Load all downloaded items from CoreStore as StoredDownloadItem (cached)
     private func loadStoredItemsFromCoreStore() -> [StoredDownloadItem] {
         // Return cached items if available
-        if let cached = cachedStoredItems {
+        if let cached = cachedStoredItems, cachedUserID == currentUserID {
             return cached
         }
 
-        guard let userSession = Container.shared.currentUserSession() else { return [] }
+        guard let userID = currentUserID else { return [] }
 
         do {
-            let clause = try AnyStoredData.fetchClause(ownerID: userSession.user.id, domain: "downloads")
+            let clause = try AnyStoredData.fetchClause(
+                ownerID: userID,
+                domain: "downloads"
+            )
             let storedData = try SwiftfinStore.dataStack.fetchAll(clause)
 
             let items = storedData.compactMap { data -> StoredDownloadItem? in
                 guard let itemData = data.data,
-                      let item = try? JSONDecoder().decode(StoredDownloadItem.self, from: itemData)
+                    let item = try? JSONDecoder().decode(
+                        StoredDownloadItem.self,
+                        from: itemData
+                    )
                 else {
                     return nil
                 }
@@ -518,22 +599,49 @@ class DownloadManager: ObservableObject {
             }
 
             cachedStoredItems = items
+            cachedUserID = userID
             return items
         } catch {
-            logger.error("Failed to load completed items from CoreStore: \(error.localizedDescription)")
+            logger.error(
+                "Failed to load completed items from CoreStore: \(error.localizedDescription)"
+            )
             return []
         }
     }
 
     private func invalidateCache() {
         cachedStoredItems = nil
+        cachedUserID = nil
+    }
+
+    private func observeUserSessionChanges() {
+        Notifications[.didSignIn]
+            .publisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.invalidateCache()
+                self?.loadCompletedItems()
+                self?.downloadsUpdated = ()
+            }
+            .store(in: &cancellables)
+
+        Notifications[.didSignOut]
+            .publisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.invalidateCache()
+                self?.completedItems.removeAll()
+                self?.downloadsUpdated = ()
+            }
+            .store(in: &cancellables)
     }
 
     private func loadCompletedItems() {
         let allStoredItems = loadStoredItemsFromCoreStore()
 
         // Episodes and seasons are accessible via navigation from series, so only include movies/series here
-        completedItems = allStoredItems
+        completedItems =
+            allStoredItems
             .filter { $0.type == .movie || $0.type == .series }
     }
 
@@ -554,11 +662,13 @@ class DownloadManager: ObservableObject {
         let downloadingEpisodes: Int
         let isComplete: Bool
         let isPartiallyDownloaded: Bool
-        let progress: Double // 0.0 to 1.0
+        let progress: Double  // 0.0 to 1.0
     }
 
     /// Get download status for a season by aggregating child episodes
-    func getSeasonDownloadStatus(seasonID: String, seriesID: String) -> AggregatedDownloadStatus {
+    func getSeasonDownloadStatus(seasonID: String, seriesID: String)
+        -> AggregatedDownloadStatus
+    {
         aggregateEpisodeStatus { item in
             item.seasonID == seasonID && item.seriesID == seriesID
         } queueFilter: { item in
@@ -581,17 +691,32 @@ class DownloadManager: ObservableObject {
         queueFilter: (DownloadQueueItem) -> Bool
     ) -> AggregatedDownloadStatus {
         let allStoredItems = loadStoredItemsFromCoreStore()
-        let matchingEpisodes = allStoredItems.filter { storedFilter($0) && $0.type == .episode }
+        let matchingEpisodes = allStoredItems.filter {
+            storedFilter($0) && $0.type == .episode
+        }
         let downloadedCount = matchingEpisodes.count
 
-        let queuedEpisodes = queue.filter { queueFilter($0) && $0.type == .episode }
-        let pendingCount = queuedEpisodes.filter { itemStates[$0.id] == .pending || itemStates[$0.id] == nil }.count
-        let downloadingCount = queuedEpisodes.filter { itemStates[$0.id] == .downloading }.count
+        let queuedEpisodes = queue.filter {
+            queueFilter($0) && $0.type == .episode
+        }
+        let pendingCount = queuedEpisodes.filter {
+            itemStates[$0.id] == .pending || itemStates[$0.id] == nil
+        }.count
+        let downloadingCount = queuedEpisodes.filter {
+            itemStates[$0.id] == .downloading
+        }.count
 
-        let totalCount = max(downloadedCount + queuedEpisodes.count, downloadedCount)
-        let isComplete = totalCount > 0 && downloadedCount == totalCount && queuedEpisodes.isEmpty
-        let isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount
-        let progress = totalCount > 0 ? Double(downloadedCount) / Double(totalCount) : 0.0
+        let totalCount = max(
+            downloadedCount + queuedEpisodes.count,
+            downloadedCount
+        )
+        let isComplete =
+            totalCount > 0 && downloadedCount == totalCount
+            && queuedEpisodes.isEmpty
+        let isPartiallyDownloaded =
+            downloadedCount > 0 && downloadedCount < totalCount
+        let progress =
+            totalCount > 0 ? Double(downloadedCount) / Double(totalCount) : 0.0
 
         return AggregatedDownloadStatus(
             totalEpisodes: totalCount,
@@ -610,20 +735,21 @@ class DownloadManager: ObservableObject {
         if let currentTask, currentTask.id == itemID {
             let progress = currentTask.state.progress
             let errorMessage: String?
-            if case let .error(message) = currentTask.state {
+            if case .error(let message) = currentTask.state {
                 errorMessage = message
             } else {
                 errorMessage = nil
             }
             // Map DownloadTask.State to DownloadItemState
-            let itemState: DownloadItemState = switch currentTask.state {
-            case .pending: .pending
-            case .downloading: .downloading
-            case .paused: .paused
-            case .complete: .complete
-            case .error: .error
-            case .cancelled: .cancelled
-            }
+            let itemState: DownloadItemState =
+                switch currentTask.state {
+                case .pending: .pending
+                case .downloading: .downloading
+                case .paused: .paused
+                case .complete: .complete
+                case .error: .error
+                case .cancelled: .cancelled
+                }
             return DownloadItemStatus(
                 state: itemState,
                 progress: progress,
@@ -634,18 +760,34 @@ class DownloadManager: ObservableObject {
         // Check queue
         if let state = itemStates[itemID] {
             let progress = itemProgress[itemID]
-            return DownloadItemStatus(state: state, progress: progress, error: nil)
+            return DownloadItemStatus(
+                state: state,
+                progress: progress,
+                error: nil
+            )
         }
 
         // Check completed
         if completedItems.contains(where: { $0.id == itemID }) {
-            return DownloadItemStatus(state: .complete, progress: 1.0, error: nil)
+            return DownloadItemStatus(
+                state: .complete,
+                progress: 1.0,
+                error: nil
+            )
         }
 
         // Check CoreStore
-        if let userSession = Container.shared.currentUserSession() {
-            if let _: StoredDownloadItem = try? AnyStoredData.fetch(itemID, ownerID: userSession.user.id, domain: "downloads") {
-                return DownloadItemStatus(state: .complete, progress: 1.0, error: nil)
+        if let userID = currentUserID {
+            if (try? AnyStoredData.fetch(
+                itemID,
+                ownerID: userID,
+                domain: "downloads"
+            )) != nil {
+                return DownloadItemStatus(
+                    state: .complete,
+                    progress: 1.0,
+                    error: nil
+                )
             }
         }
 
@@ -653,16 +795,27 @@ class DownloadManager: ObservableObject {
     }
 
     /// Get aggregated status for a season or series item
-    func aggregatedStatus(for itemID: String, type: BaseItemKind) -> AggregatedDownloadStatus? {
-        guard let userSession = Container.shared.currentUserSession() else { return nil }
+    func aggregatedStatus(for itemID: String, type: BaseItemKind)
+        -> AggregatedDownloadStatus?
+    {
+        guard let userID = currentUserID else { return nil }
 
         // Try to get the item from CoreStore, then check the queue if not found
-        guard let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(itemID, ownerID: userSession.user.id, domain: "downloads")
+        guard
+            let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
+                itemID,
+                ownerID: userID,
+                domain: "downloads"
+            )
         else {
             // Item not in CoreStore, check if it's in queue
             if let queueItem = queue.first(where: { $0.id == itemID }) {
-                if queueItem.type == .season, let seriesID = queueItem.seriesID {
-                    return getSeasonDownloadStatus(seasonID: itemID, seriesID: seriesID)
+                if queueItem.type == .season, let seriesID = queueItem.seriesID
+                {
+                    return getSeasonDownloadStatus(
+                        seasonID: itemID,
+                        seriesID: seriesID
+                    )
                 } else if queueItem.type == .series {
                     return getSeriesDownloadStatus(seriesID: itemID)
                 }
@@ -684,12 +837,12 @@ class DownloadManager: ObservableObject {
     /// Get a downloaded episode as DownloadItemDto for offline playback
     func downloadedEpisode(for episode: BaseItemDto) -> StoredDownloadItem? {
         guard let episodeID = episode.id,
-              let userSession = Container.shared.currentUserSession(),
-              let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
-                  episodeID,
-                  ownerID: userSession.user.id,
-                  domain: "downloads"
-              )
+            let userID = currentUserID,
+            let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
+                episodeID,
+                ownerID: userID,
+                domain: "downloads"
+            )
         else {
             return nil
         }
@@ -700,74 +853,116 @@ class DownloadManager: ObservableObject {
     // MARK: - File Deletion
 
     /// Determine the folder path for an item from its properties
-    private func folderPathForItem(id: String, type: BaseItemKind, seriesID: String?, seasonID: String?) -> URL? {
+    private func folderPathForItem(
+        id: String,
+        type: BaseItemKind,
+        seriesID: String?,
+        seasonID: String?
+    ) -> URL? {
         switch type {
         case .movie:
-            return fileSystemService.folderPath(for: id, type: .movie, seriesID: nil, seasonID: nil)
+            return fileSystemService.folderPath(
+                for: id,
+                type: .movie,
+                seriesID: nil,
+                seasonID: nil
+            )
         case .series:
-            return fileSystemService.folderPath(for: id, type: .series, seriesID: nil, seasonID: nil)
+            return fileSystemService.folderPath(
+                for: id,
+                type: .series,
+                seriesID: nil,
+                seasonID: nil
+            )
         case .season:
-            return fileSystemService.folderPath(for: id, type: .season, seriesID: seriesID, seasonID: nil)
+            return fileSystemService.folderPath(
+                for: id,
+                type: .season,
+                seriesID: seriesID,
+                seasonID: nil
+            )
         case .episode:
-            return fileSystemService.folderPath(for: id, type: .episode, seriesID: seriesID, seasonID: seasonID)
+            return fileSystemService.folderPath(
+                for: id,
+                type: .episode,
+                seriesID: seriesID,
+                seasonID: seasonID
+            )
         default:
-            return fileSystemService.folderPath(for: id, type: .movie, seriesID: nil, seasonID: nil)
+            return fileSystemService.folderPath(
+                for: id,
+                type: .movie,
+                seriesID: nil,
+                seasonID: nil
+            )
         }
     }
 
     /// Unified method to delete an item's files and CoreStore entry
     private func deleteItem(itemID: String) {
-        // 1. Try to get item from CoreStore to determine folder path
-        var folderPath: URL?
+        // 1. Try to get item from CoreStore to determine folder path(s)
+        var pathsToDelete: [URL] = []
         var hasCoreStoreEntry = false
 
-        if let userSession = Container.shared.currentUserSession() {
+        if let userID = currentUserID {
             if let storedItem: StoredDownloadItem = try? AnyStoredData.fetch(
                 itemID,
-                ownerID: userSession.user.id,
+                ownerID: userID,
                 domain: "downloads"
             ) {
                 hasCoreStoreEntry = true
-                folderPath = fileSystemService.folderPath(
+                if let path = fileSystemService.folderPath(for: storedItem.item)
+                {
+                    pathsToDelete.append(path)
+                }
+
+                if let legacyPath = fileSystemService.folderPath(
                     for: storedItem.id,
                     type: storedItem.type,
                     seriesID: storedItem.seriesID,
                     seasonID: storedItem.seasonID
-                )
+                ) {
+                    pathsToDelete.append(legacyPath)
+                }
             } else if let queueItem = queue.first(where: { $0.id == itemID }) {
                 // If not in CoreStore, check the queue for metadata
-                folderPath = fileSystemService.folderPath(
+                if let path = fileSystemService.folderPath(
                     for: queueItem.id,
                     type: queueItem.type,
                     seriesID: queueItem.seriesID,
                     seasonID: queueItem.seasonID
-                )
+                ) {
+                    pathsToDelete.append(path)
+                }
             }
         }
 
-        // 2. Use type-based path lookup since we know the structure
-        if folderPath == nil {
-            folderPath = fileSystemService.folderPath(for: itemID, type: .movie, seriesID: nil, seasonID: nil)
+        // 2. Delete files
+        if !pathsToDelete.isEmpty {
+            for path in Set(pathsToDelete) {
+                fileSystemService.deleteFolder(at: path)
+            }
         }
 
-        // 3. Delete files
-        if let path = folderPath {
-            fileSystemService.deleteFolder(at: path)
-        }
-
-        // 4. Delete from CoreStore
-        if hasCoreStoreEntry || folderPath != nil {
+        // 3. Delete from CoreStore
+        if hasCoreStoreEntry || !pathsToDelete.isEmpty {
             deleteFromCoreStore(itemID: itemID)
         }
     }
 
     private func deleteFromCoreStore(itemID: String) {
-        guard let userSession = Container.shared.currentUserSession() else { return }
+        guard let userID = currentUserID else { return }
         do {
-            try AnyStoredData.delete(key: itemID, ownerID: userSession.user.id, domain: "downloads")
+            try AnyStoredData.delete(
+                key: itemID,
+                ownerID: userID,
+                domain: "downloads"
+            )
             invalidateCache()
         } catch {
-            logger.error("Failed to delete item from CoreStore: \(error.localizedDescription)")
+            logger.error(
+                "Failed to delete item from CoreStore: \(error.localizedDescription)"
+            )
         }
     }
 }

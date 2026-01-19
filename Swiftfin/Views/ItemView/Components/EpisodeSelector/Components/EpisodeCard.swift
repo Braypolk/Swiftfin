@@ -16,10 +16,22 @@ extension SeriesEpisodeSelector {
         @Namespace
         private var namespace
 
-        @Router
-        private var router
-
         let episode: BaseItemDto
+        let onPlay: () -> Void
+        let onDetail: (Namespace.ID) -> Void
+        let enableTransitions: Bool
+
+        init(
+            episode: BaseItemDto,
+            enableTransitions: Bool = true,
+            onPlay: @escaping () -> Void = {},
+            onDetail: @escaping (Namespace.ID) -> Void = { _ in }
+        ) {
+            self.episode = episode
+            self.enableTransitions = enableTransitions
+            self.onPlay = onPlay
+            self.onDetail = onDetail
+        }
 
         @ViewBuilder
         private var overlayView: some View {
@@ -34,7 +46,11 @@ extension SeriesEpisodeSelector {
 
                     Image(systemName: "checkmark.circle.fill")
                         .resizable()
-                        .frame(width: 30, height: 30, alignment: .bottomTrailing)
+                        .frame(
+                            width: 30,
+                            height: 30,
+                            alignment: .bottomTrailing
+                        )
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(.white, .black)
                         .padding()
@@ -53,24 +69,26 @@ extension SeriesEpisodeSelector {
         var body: some View {
             VStack(alignment: .leading) {
                 Button {
-                    router.route(
-                        to: .videoPlayer(
-                            item: episode,
-                            queue: EpisodeMediaPlayerQueue(episode: episode)
-                        )
-                    )
+                    onPlay()
                 } label: {
                     ImageView(episode.imageSource(.primary, maxWidth: 250))
                         .failure {
-                            SystemImageContentView(systemName: episode.systemImage)
+                            SystemImageContentView(
+                                systemName: episode.systemImage
+                            )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .overlay {
                             overlayView
                         }
                         .contentShape(.contextMenuPreview, Rectangle())
-                        .backport
-                        .matchedTransitionSource(id: "item", in: namespace)
+                        .if(enableTransitions) {
+                            $0.backport
+                                .matchedTransitionSource(
+                                    id: "item",
+                                    in: namespace
+                                )
+                        }
                         .posterStyle(.landscape)
                         .posterShadow()
                 }
@@ -80,7 +98,7 @@ extension SeriesEpisodeSelector {
                     subHeader: episode.episodeLocator ?? .emptyDash,
                     content: episodeContent
                 ) {
-                    router.route(to: .item(item: episode), in: namespace)
+                    onDetail(namespace)
                 }
             }
         }

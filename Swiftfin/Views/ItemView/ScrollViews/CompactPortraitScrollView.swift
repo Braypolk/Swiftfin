@@ -11,22 +11,34 @@ import SwiftUI
 
 extension ItemView {
 
-    struct CompactPosterScrollView<Content: View>: ScrollContainerView {
+    struct CompactPosterScrollView<
+        Content: View,
+        ViewModel: ItemViewModelProtocol
+    >: ScrollContainerView {
 
         @Router
         private var router
 
         @ObservedObject
-        private var viewModel: ItemViewModel
+        private var viewModel: ViewModel
 
         private let content: Content
+        private let onPlay: (() -> Void)?
+        private let onTogglePlayed: () -> Void
+        private let onToggleFavorite: () -> Void
 
         init(
-            viewModel: ItemViewModel,
-            @ViewBuilder content: @escaping () -> Content
+            viewModel: ViewModel,
+            onPlay: (() -> Void)? = nil,
+            onTogglePlayed: @escaping () -> Void = {},
+            onToggleFavorite: @escaping () -> Void = {},
+            content: @escaping () -> Content
         ) {
             self.content = content()
             self.viewModel = viewModel
+            self.onPlay = onPlay
+            self.onTogglePlayed = onTogglePlayed
+            self.onToggleFavorite = onToggleFavorite
         }
 
         private func withHeaderImageItem(
@@ -35,22 +47,29 @@ extension ItemView {
 
             let item: BaseItemDto
 
-            if viewModel.item.type == .person || viewModel.item.type == .musicArtist,
-               let typeViewModel = viewModel as? CollectionItemViewModel,
-               let randomItem = typeViewModel.randomItem()
+            if viewModel.item.type == .person
+                || viewModel.item.type == .musicArtist,
+                let typeViewModel = viewModel as? CollectionItemViewModel,
+                let randomItem = typeViewModel.randomItem()
             {
                 item = randomItem
             } else {
                 item = viewModel.item
             }
 
-            let imageType: ImageType = item.type == .episode ? .primary : .backdrop
-            let bottomColor = item.blurHash(for: imageType)?.averageLinearColor ?? Color.secondarySystemFill
+            let imageType: ImageType =
+                item.type == .episode ? .primary : .backdrop
+            let bottomColor =
+                item.blurHash(for: imageType)?.averageLinearColor
+                ?? Color.secondarySystemFill
             let imageSource = item.imageSource(imageType, maxWidth: 1320)
 
             return content(imageSource, bottomColor)
                 .id(imageSource.url?.hashValue)
-                .animation(.linear(duration: 0.1), value: imageSource.url?.hashValue)
+                .animation(
+                    .linear(duration: 0.1),
+                    value: imageSource.url?.hashValue
+                )
         }
 
         @ViewBuilder
@@ -59,7 +78,11 @@ extension ItemView {
                 withHeaderImageItem { imageSource, bottomColor in
                     ImageView(imageSource)
                         .aspectRatio(1.77, contentMode: .fill)
-                        .frame(width: proxy.size.width, height: proxy.size.height * 0.78, alignment: .top)
+                        .frame(
+                            width: proxy.size.width,
+                            height: proxy.size.height * 0.78,
+                            alignment: .top
+                        )
                         .bottomEdgeGradient(bottomColor: bottomColor)
                 }
             }
@@ -69,18 +92,23 @@ extension ItemView {
             OffsetScrollView(heightRatio: 0.45) {
                 headerView
             } overlay: {
-                OverlayView(viewModel: viewModel)
-                    .edgePadding(.horizontal)
-                    .edgePadding(.bottom)
-                    .frame(maxWidth: .infinity)
-                    .background {
-                        BlurView(style: .systemThinMaterialDark)
-                            .maskLinearGradient {
-                                (location: 0.2, opacity: 0)
-                                (location: 0.3, opacity: 0.5)
-                                (location: 0.55, opacity: 1)
-                            }
-                    }
+                OverlayView(
+                    viewModel: viewModel,
+                    onPlay: onPlay,
+                    onTogglePlayed: onTogglePlayed,
+                    onToggleFavorite: onToggleFavorite
+                )
+                .edgePadding(.horizontal)
+                .edgePadding(.bottom)
+                .frame(maxWidth: .infinity)
+                .background {
+                    BlurView(style: .systemThinMaterialDark)
+                        .maskLinearGradient {
+                            (location: 0.2, opacity: 0)
+                            (location: 0.3, opacity: 0.5)
+                            (location: 0.55, opacity: 1)
+                        }
+                }
             } content: {
                 SeparatorVStack(alignment: .leading) {
                     RowDivider()
@@ -100,6 +128,21 @@ extension ItemView {
     }
 }
 
+extension ItemView.CompactPosterScrollView where ViewModel == ItemViewModel {
+    init(
+        viewModel: ItemViewModel,
+        content: @escaping () -> Content
+    ) {
+        self.init(
+            viewModel: viewModel,
+            onPlay: nil,
+            onTogglePlayed: { viewModel.send(.toggleIsPlayed) },
+            onToggleFavorite: { viewModel.send(.toggleIsFavorite) },
+            content: content
+        )
+    }
+}
+
 // TODO: have action buttons part of the right shelf view
 //       - possible on leading edge instead
 
@@ -114,7 +157,10 @@ extension ItemView.CompactPosterScrollView {
         private var router
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
+        var onPlay: (() -> Void)?
+        var onTogglePlayed: () -> Void
+        var onToggleFavorite: () -> Void
 
         @ViewBuilder
         private var rightShelfView: some View {
@@ -136,16 +182,22 @@ extension ItemView.CompactPosterScrollView {
                         }
                     } else {
                         if viewModel.item.isUnaired {
-                            if let premiereDateLabel = viewModel.item.airDateLabel {
+                            if let premiereDateLabel = viewModel.item
+                                .airDateLabel
+                            {
                                 Text(premiereDateLabel)
                             }
                         } else {
-                            if let productionYear = viewModel.item.premiereDateYear {
+                            if let productionYear = viewModel.item
+                                .premiereDateYear
+                            {
                                 Text(String(productionYear))
                             }
                         }
 
-                        if let playButtonitem = viewModel.playButtonItem, let runtime = playButtonitem.runTimeLabel {
+                        if let playButtonitem = viewModel.playButtonItem,
+                            let runtime = playButtonitem.runTimeLabel
+                        {
                             Text(runtime)
                         }
                     }
@@ -182,14 +234,22 @@ extension ItemView.CompactPosterScrollView {
                 HStack(alignment: .center) {
 
                     if viewModel.item.presentPlayButton {
-                        ItemView.PlayButton(viewModel: viewModel)
-                            .frame(width: 130)
+                        ItemView.PlayButton(
+                            viewModel: viewModel,
+                            onPlay: onPlay
+                        )
+                        .frame(width: 130)
                     }
 
                     Spacer()
 
-                    ItemView.ActionButtonHStack(viewModel: viewModel, equalSpacing: false)
-                        .foregroundStyle(.white)
+                    ItemView.ActionButtonHStack(
+                        viewModel: viewModel,
+                        equalSpacing: false,
+                        onTogglePlayed: onTogglePlayed,
+                        onToggleFavorite: onToggleFavorite
+                    )
+                    .foregroundStyle(.white)
                 }
                 .frame(height: 45)
             }

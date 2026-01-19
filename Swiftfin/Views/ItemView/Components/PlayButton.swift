@@ -13,7 +13,7 @@ import SwiftUI
 
 extension ItemView {
 
-    struct PlayButton: View {
+    struct PlayButton<ViewModel: ItemViewModelProtocol>: View {
 
         @Default(.accentColor)
         private var accentColor
@@ -22,27 +22,42 @@ extension ItemView {
         private var router
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
+
+        private let onPlay: (() -> Void)?
 
         private let logger = Logger.swiftfin()
+
+        init(
+            viewModel: ViewModel,
+            onPlay: (() -> Void)? = nil
+        ) {
+            self.viewModel = viewModel
+            self.onPlay = onPlay
+        }
 
         // MARK: - Validation
 
         private var isEnabled: Bool {
-            viewModel.selectedMediaSource != nil
+            if onPlay != nil { return true }
+            return viewModel.selectedMediaSource != nil
         }
 
         // MARK: - Title
 
         private var title: String {
             /// Use the Season/Episode label for the Series ItemView
-            if let seriesViewModel = viewModel as? SeriesItemViewModel,
-               let seasonEpisodeLabel = seriesViewModel.playButtonItem?.seasonEpisodeLabel
+            if viewModel.item.type == .series,
+                let seriesViewModel = viewModel as? SeriesViewModelProtocol,
+                let seasonEpisodeLabel = seriesViewModel.playButtonItem?
+                    .seasonEpisodeLabel
             {
                 return seasonEpisodeLabel
 
                 /// Use a Play/Resume label for single Media Source items that are not Series
-            } else if let playButtonLabel = viewModel.playButtonItem?.playButtonLabel {
+            } else if let playButtonLabel = viewModel.playButtonItem?
+                .playButtonLabel
+            {
                 return playButtonLabel
 
                 /// Fallback to a generic `Play` label
@@ -55,7 +70,7 @@ extension ItemView {
 
         private var source: String? {
             guard let sourceLabel = viewModel.selectedMediaSource?.displayTitle,
-                  viewModel.item.mediaSources?.count ?? 0 > 1
+                viewModel.item.mediaSources?.count ?? 0 > 1
             else {
                 return nil
             }
@@ -93,7 +108,9 @@ extension ItemView {
                 )
             )
             .contextMenu {
-                if viewModel.playButtonItem?.userData?.playbackPositionTicks != 0 {
+                if viewModel.playButtonItem?.userData?.playbackPositionTicks
+                    != 0
+                {
                     Button(L10n.playFromBeginning, systemImage: "gobackward") {
                         play(fromBeginning: true)
                     }
@@ -106,8 +123,16 @@ extension ItemView {
         // MARK: - Play Content
 
         private func play(fromBeginning: Bool = false) {
+            if let onPlay {
+                // TODO: handle fromBeginning for offline if needed?
+                // For now the simple closure is what we have.
+                // The offline view usually handles its own playback logic including resume/reset.
+                onPlay()
+                return
+            }
+
             guard let playButtonItem = viewModel.playButtonItem,
-                  let selectedMediaSource = viewModel.selectedMediaSource
+                let selectedMediaSource = viewModel.selectedMediaSource
             else {
                 logger.error("Play selected with no item or media source")
                 return
@@ -120,7 +145,8 @@ extension ItemView {
                 return nil
             }()
 
-            let provider = MediaPlayerItemProvider(item: playButtonItem) { item in
+            let provider = MediaPlayerItemProvider(item: playButtonItem) {
+                item in
                 try await MediaPlayerItem.build(
                     for: item,
                     mediaSource: selectedMediaSource
@@ -138,5 +164,11 @@ extension ItemView {
                 )
             )
         }
+    }
+}
+
+extension ItemView.PlayButton where ViewModel == ItemViewModel {
+    init(viewModel: ItemViewModel) {
+        self.init(viewModel: viewModel, onPlay: nil)
     }
 }

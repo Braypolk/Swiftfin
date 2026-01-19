@@ -11,22 +11,34 @@ import SwiftUI
 
 extension ItemView {
 
-    struct iPadOSCinematicScrollView<Content: View>: ScrollContainerView {
+    struct iPadOSCinematicScrollView<
+        Content: View,
+        ViewModel: ItemViewModelProtocol
+    >: ScrollContainerView {
 
         @ObservedObject
-        private var viewModel: ItemViewModel
+        private var viewModel: ViewModel
 
         @State
         private var globalSize: CGSize = .zero
 
         private let content: Content
+        private let onPlay: (() -> Void)?
+        private let onTogglePlayed: () -> Void
+        private let onToggleFavorite: () -> Void
 
         init(
-            viewModel: ItemViewModel,
-            @ViewBuilder content: () -> Content
+            viewModel: ViewModel,
+            onPlay: (() -> Void)? = nil,
+            onTogglePlayed: @escaping () -> Void = {},
+            onToggleFavorite: @escaping () -> Void = {},
+            content: @escaping () -> Content
         ) {
             self.content = content()
             self.viewModel = viewModel
+            self.onPlay = onPlay
+            self.onTogglePlayed = onTogglePlayed
+            self.onToggleFavorite = onToggleFavorite
         }
 
         private var imageType: ImageType {
@@ -44,27 +56,34 @@ extension ItemView {
 
             let item: BaseItemDto
 
-            if viewModel.item.type == .person || viewModel.item.type == .musicArtist,
-               let typeViewModel = viewModel as? CollectionItemViewModel,
-               let randomItem = typeViewModel.randomItem()
+            if viewModel.item.type == .person
+                || viewModel.item.type == .musicArtist,
+                let typeViewModel = viewModel as? CollectionItemViewModel,
+                let randomItem = typeViewModel.randomItem()
             {
                 item = randomItem
             } else {
                 item = viewModel.item
             }
 
-            let bottomColor = item.blurHash(for: imageType)?.averageLinearColor ?? Color.secondarySystemFill
+            let bottomColor =
+                item.blurHash(for: imageType)?.averageLinearColor
+                ?? Color.secondarySystemFill
             let imageSource = item.imageSource(imageType, maxWidth: 1920)
 
             return content(imageSource, bottomColor)
                 .id(imageSource.url?.hashValue)
-                .animation(.linear(duration: 0.1), value: imageSource.url?.hashValue)
+                .animation(
+                    .linear(duration: 0.1),
+                    value: imageSource.url?.hashValue
+                )
         }
 
         @ViewBuilder
         private var headerView: some View {
             withHeaderImageItem { imageSource, bottomColor in
                 ImageView(imageSource)
+
                     .aspectRatio(1.77, contentMode: .fill)
                     .bottomEdgeGradient(bottomColor: bottomColor)
             }
@@ -76,16 +95,21 @@ extension ItemView {
             ) {
                 headerView
             } overlay: {
-                OverlayView(viewModel: viewModel)
-                    .edgePadding()
-                    .frame(maxWidth: .infinity)
-                    .background {
-                        BlurView(style: .systemThinMaterialDark)
-                            .maskLinearGradient {
-                                (location: 0.4, opacity: 0)
-                                (location: 0.8, opacity: 1)
-                            }
-                    }
+                OverlayView(
+                    viewModel: viewModel,
+                    onPlay: onPlay,
+                    onTogglePlayed: onTogglePlayed,
+                    onToggleFavorite: onToggleFavorite
+                )
+                .edgePadding()
+                .frame(maxWidth: .infinity)
+                .background {
+                    BlurView(style: .systemThinMaterialDark)
+                        .maskLinearGradient {
+                            (location: 0.4, opacity: 0)
+                            (location: 0.8, opacity: 1)
+                        }
+                }
             } content: {
                 content
                     .padding(.top, 10)
@@ -93,6 +117,21 @@ extension ItemView {
             }
             .trackingSize($globalSize)
         }
+    }
+}
+
+extension ItemView.iPadOSCinematicScrollView where ViewModel == ItemViewModel {
+    init(
+        viewModel: ItemViewModel,
+        content: @escaping () -> Content
+    ) {
+        self.init(
+            viewModel: viewModel,
+            onPlay: nil,
+            onTogglePlayed: { viewModel.send(.toggleIsPlayed) },
+            onToggleFavorite: { viewModel.send(.toggleIsFavorite) },
+            content: content
+        )
     }
 }
 
@@ -104,7 +143,10 @@ extension ItemView.iPadOSCinematicScrollView {
         private var attributes
 
         @ObservedObject
-        var viewModel: ItemViewModel
+        var viewModel: ViewModel
+        var onPlay: (() -> Void)?
+        var onTogglePlayed: () -> Void
+        var onToggleFavorite: () -> Void
 
         var body: some View {
             GeometryReader { geometry in
@@ -112,10 +154,12 @@ extension ItemView.iPadOSCinematicScrollView {
 
                     VStack(alignment: .leading, spacing: 20) {
 
-                        ImageView(viewModel.item.imageSource(
-                            .logo,
-                            maxHeight: 130
-                        ))
+                        ImageView(
+                            viewModel.item.imageSource(
+                                .logo,
+                                maxHeight: 130
+                            )
+                        )
                         .placeholder { _ in
                             EmptyView()
                         }
@@ -128,7 +172,11 @@ extension ItemView.iPadOSCinematicScrollView {
                                 .foregroundStyle(.white)
                         }
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: geometry.size.width * 0.4, maxHeight: 130, alignment: .bottomLeading)
+                        .frame(
+                            maxWidth: geometry.size.width * 0.4,
+                            maxHeight: 130,
+                            alignment: .bottomLeading
+                        )
 
                         ItemView.OverviewView(item: viewModel.item)
                             .overviewLineLimit(3)
@@ -143,15 +191,23 @@ extension ItemView.iPadOSCinematicScrollView {
                                 minRowLength: 1
                             ) {
                                 DotHStack {
-                                    if let firstGenre = viewModel.item.genres?.first {
+                                    if let firstGenre = viewModel.item.genres?
+                                        .first
+                                    {
                                         Text(firstGenre)
                                     }
 
-                                    if let premiereYear = viewModel.item.premiereDateYear {
+                                    if let premiereYear = viewModel.item
+                                        .premiereDateYear
+                                    {
                                         Text(premiereYear)
                                     }
 
-                                    if let playButtonitem = viewModel.playButtonItem, let runtime = playButtonitem.runTimeLabel {
+                                    if let playButtonitem = viewModel
+                                        .playButtonItem,
+                                        let runtime = playButtonitem
+                                            .runTimeLabel
+                                    {
                                         Text(runtime)
                                     }
                                 }
@@ -172,26 +228,46 @@ extension ItemView.iPadOSCinematicScrollView {
                     Spacer()
 
                     VStack(spacing: 10) {
-                        if viewModel.item.type == .person || viewModel.item.type == .musicArtist {
-                            ImageView(viewModel.item.imageSource(.primary, maxWidth: 200))
-                                .failure {
-                                    SystemImageContentView(systemName: viewModel.item.systemImage)
-                                }
-                                .posterStyle(.portrait, contentMode: .fit)
-                                .frame(width: 200)
-                                .accessibilityIgnoresInvertColors()
+                        if viewModel.item.type == .person
+                            || viewModel.item.type == .musicArtist
+                        {
+                            ImageView(
+                                viewModel.item.imageSource(
+                                    .primary,
+                                    maxWidth: 200
+                                )
+                            )
+                            .failure {
+                                SystemImageContentView(
+                                    systemName: viewModel.item.systemImage
+                                )
+                            }
+                            .posterStyle(.portrait, contentMode: .fit)
+                            .frame(width: 200)
+                            .accessibilityIgnoresInvertColors()
                         } else if viewModel.item.presentPlayButton {
-                            ItemView.PlayButton(viewModel: viewModel)
-                                .frame(height: 50)
+                            ItemView.PlayButton(
+                                viewModel: viewModel,
+                                onPlay: onPlay
+                            )
+                            .frame(height: 50)
                         }
 
-                        ItemView.ActionButtonHStack(viewModel: viewModel)
-                            .foregroundStyle(.white)
-                            .frame(height: 50)
+                        ItemView.ActionButtonHStack(
+                            viewModel: viewModel,
+                            onTogglePlayed: onTogglePlayed,
+                            onToggleFavorite: onToggleFavorite
+                        )
+                        .foregroundStyle(.white)
+                        .frame(height: 50)
                     }
                     .frame(width: 250)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .bottom
+                )
             }
         }
     }

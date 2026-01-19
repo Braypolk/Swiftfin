@@ -7,6 +7,7 @@
 //
 
 import CollectionHStack
+import Factory
 import JellyfinAPI
 import SwiftUI
 
@@ -18,6 +19,12 @@ extension SeriesEpisodeSelector {
 
         @ObservedObject
         var viewModel: SeasonItemViewModel
+
+        @Injected(\.downloadManager)
+        private var downloadManager: DownloadManager
+
+        @Router
+        private var router
 
         @State
         private var didScrollToPlayButtonItem = false
@@ -35,9 +42,35 @@ extension SeriesEpisodeSelector {
                 columns: UIDevice.isPhone ? 1.5 : 3.5
             ) { episode in
                 if parentViewModel is DownloadItemViewModel {
-                    DownloadItemView.DownloadEpisodeCard(episode: episode)
+                    SeriesEpisodeSelector.EpisodeCard(
+                        episode: episode,
+                        onPlay: {
+                            playOffline(episode: episode)
+                        },
+                        onDetail: { namespace in
+                            goToOfflineDetail(episode: episode, in: namespace)
+                        }
+                    )
                 } else {
-                    SeriesEpisodeSelector.EpisodeCard(episode: episode)
+                    SeriesEpisodeSelector.EpisodeCard(
+                        episode: episode,
+                        onPlay: {
+                            router.route(
+                                to: .videoPlayer(
+                                    item: episode,
+                                    queue: EpisodeMediaPlayerQueue(
+                                        episode: episode
+                                    )
+                                )
+                            )
+                        },
+                        onDetail: { namespace in
+                            router.route(
+                                to: .item(item: episode),
+                                in: namespace
+                            )
+                        }
+                    )
                 }
             }
             .clipsToBounds(false)
@@ -55,9 +88,49 @@ extension SeriesEpisodeSelector {
 
                     // Only scroll if it's not the first element to avoid alignment bugs
                     if viewModel.elements.first?.id != playButtonItem.id {
-                        proxy.scrollTo(id: playButtonItem.unwrappedIDHashOrZero, animated: false)
+                        proxy.scrollTo(
+                            id: playButtonItem.unwrappedIDHashOrZero,
+                            animated: false
+                        )
                     }
                 }
+            }
+        }
+
+        private func playOffline(episode: BaseItemDto) {
+            guard
+                let downloadedItem = downloadManager.downloadedEpisode(
+                    for: episode
+                )
+            else {
+                print("Failed to get downloaded episode")
+                return
+            }
+
+            Task { @MainActor in
+                do {
+                    let playbackItem = try MediaPlayerItem.buildOffline(
+                        for: downloadedItem
+                    )
+                    let manager = MediaPlayerManager(playbackItem: playbackItem)
+                    router.route(to: .videoPlayer(manager: manager))
+                } catch {
+                    print("Failed to play offline episode: \(error)")
+                }
+            }
+        }
+
+        private func goToOfflineDetail(
+            episode: BaseItemDto,
+            in namespace: Namespace.ID
+        ) {
+            if let downloadedItem = downloadManager.downloadedEpisode(
+                for: episode
+            ) {
+                router.route(
+                    to: .downloadItem(item: downloadedItem),
+                    in: namespace
+                )
             }
         }
 
@@ -69,7 +142,7 @@ extension SeriesEpisodeSelector {
                 } else {
                     contentView(viewModel: viewModel)
                 }
-            case let .error(error):
+            case .error(let error):
                 ErrorHStack(viewModel: viewModel, error: error)
             case .initial, .refreshing:
                 LoadingHStack()
@@ -124,7 +197,7 @@ extension SeriesEpisodeSelector {
 
         var body: some View {
             CollectionHStack(
-                count: Int.random(in: 2 ..< 5),
+                count: Int.random(in: 2..<5),
                 columns: UIDevice.isPhone ? 1.5 : 3.5
             ) { _ in
                 SeriesEpisodeSelector.LoadingCard()

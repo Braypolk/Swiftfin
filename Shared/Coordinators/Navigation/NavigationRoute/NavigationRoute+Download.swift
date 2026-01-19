@@ -17,22 +17,23 @@ extension NavigationRoute {
         id: "downloadLibrary"
     ) {
         #if os(iOS)
-        DownloadPagingLibraryView()
+            DownloadPagingLibraryView()
         #else
-        EmptyView()
+            EmptyView()
         #endif
     }
 
     // MARK: - Download Item
 
     #if os(iOS)
-    static func downloadItem(item: StoredDownloadItem) -> NavigationRoute {
-        NavigationRoute(
-            id: "downloadItem-\(item.id)"
-        ) {
-            DownloadItemView(item: item)
+        static func downloadItem(item: StoredDownloadItem) -> NavigationRoute {
+            NavigationRoute(
+                id: "downloadItem-\(item.id)",
+                withNamespace: { .push(.zoom(sourceID: "item", namespace: $0)) }
+            ) {
+                DownloadItemView(item: item)
+            }
         }
-    }
     #endif
 
     // MARK: - Download Queue
@@ -42,11 +43,11 @@ extension NavigationRoute {
         style: .sheet
     ) {
         #if os(iOS)
-        NavigationView {
-            DownloadQueueView(viewModel: DownloadPagingLibraryViewModel())
-        }
+            NavigationView {
+                DownloadQueueView(viewModel: DownloadPagingLibraryViewModel())
+            }
         #else
-        EmptyView()
+            EmptyView()
         #endif
     }
 }
