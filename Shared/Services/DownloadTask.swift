@@ -161,8 +161,13 @@ class DownloadTask: NSObject, ObservableObject, Identifiable {
 
             do {
                 // Check storage space first
-                if let estimatedSize = FileManager.default.estimateDownloadSize(for: item) {
-                    try FileManager.default.checkSpace(requiredBytes: estimatedSize)
+                if let estimatedSize = item.estimatedDownloadSize {
+                    // Add a 10% buffer for safety
+                    let requiredWithBuffer = Int64(Double(estimatedSize) * 1.1)
+
+                    if let available = FileManager.default.availableStorage, available < requiredWithBuffer {
+                        throw DownloadError.insufficientSpace(required: estimatedSize, available: available)
+                    }
                 }
 
                 if queueItem.isMetadataOnly {

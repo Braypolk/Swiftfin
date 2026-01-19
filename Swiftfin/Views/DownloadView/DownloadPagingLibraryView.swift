@@ -346,7 +346,7 @@ struct DownloadItemRowView: View {
                     if let fileSize = item.fileSize {
                         Text("•")
                             .foregroundColor(.secondary)
-                        Text(FileManager.default.formatBytes(fileSize))
+                        Text(fileSize.formattedBytes)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

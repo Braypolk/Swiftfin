@@ -242,7 +242,7 @@ final class DownloadPagingLibraryViewModel: ViewModel {
 
     /// Formatted total size
     var formattedTotalSize: String {
-        FileManager.default.formattedDownloadsSize()
+        totalDownloadSize.formattedBytes
     }
 
     /// Available storage
@@ -250,11 +250,24 @@ final class DownloadPagingLibraryViewModel: ViewModel {
         guard let available = FileManager.default.availableStorage else {
             return "Unknown"
         }
-        return FileManager.default.formatBytes(available)
+        return available.formattedBytes
     }
 
     var storageSummary: String {
-        FileManager.default.storageSummary()
+        var summary = ""
+
+        if let available = FileManager.default.availableStorage {
+            summary += "Available: \(available.formattedBytes)"
+        }
+
+        if let total = FileManager.default.totalStorage {
+            if !summary.isEmpty {
+                summary += " / "
+            }
+            summary += "Total: \(total.formattedBytes)"
+        }
+
+        return summary.isEmpty ? "Unable to determine storage" : summary
     }
 
     // MARK: - Grouped Queue

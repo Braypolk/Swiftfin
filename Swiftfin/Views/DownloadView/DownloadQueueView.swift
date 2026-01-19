@@ -180,8 +180,8 @@ struct CurrentDownloadRow: View {
     }
 
     private var formattedSizes: String {
-        let downloaded = FileManager.default.formatBytes(group.bytesDownloaded)
-        let total = FileManager.default.formatBytes(group.totalSize)
+        let downloaded = group.bytesDownloaded.formattedBytes
+        let total = group.totalSize.formattedBytes
         return "\(downloaded) / \(total)"
     }
 

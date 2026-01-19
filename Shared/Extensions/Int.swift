@@ -26,6 +26,18 @@ extension FixedWidthInteger {
             .appending(minutesText)
             .appending(secondsText)
     }
+
+    /// Format bytes as a human-readable string (e.g., "1.5 GB")
+    var formattedBytes: String {
+        ByteCountFormatter.string(fromByteCount: Int64(self), countStyle: .file)
+    }
+}
+
+extension Int64 {
+    /// Format bytes as a human-readable string (e.g., "1.5 GB")
+    var formattedBytes: String {
+        ByteCountFormatter.string(fromByteCount: self, countStyle: .file)
+    }
 }
 
 extension Int {
