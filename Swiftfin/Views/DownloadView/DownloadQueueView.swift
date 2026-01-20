@@ -204,8 +204,6 @@ struct DownloadQueueRow: View {
                 Text(group.title)
                     .font(.headline)
                     .lineLimit(1)
-
-                HStack(spacing: 8) {}
             }
 
             Spacer()

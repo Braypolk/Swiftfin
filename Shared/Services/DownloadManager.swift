@@ -24,6 +24,19 @@ extension Container {
 
 class DownloadManager: ObservableObject {
 
+    // MARK: - Retry Configuration
+
+    private enum RetryConfig {
+        /// Maximum number of automatic retry attempts before giving up
+        static let maxRetries = 3
+
+        /// Base delay in seconds for exponential backoff (doubles each retry)
+        static let baseBackoffSeconds: TimeInterval = 30
+
+        /// Maximum delay cap for backoff to prevent excessive wait times
+        static let maxBackoffSeconds: TimeInterval = 300 // 5 minutes
+    }
+
     // MARK: - State
 
     enum State: Hashable {
@@ -139,6 +152,7 @@ class DownloadManager: ObservableObject {
                     addToQueue(queueItems)
                 }
             } catch {
+                // TODO: handle error
                 logger.error(
                     "Failed to build queue for item: \(error.localizedDescription)"
                 )
@@ -224,7 +238,58 @@ class DownloadManager: ObservableObject {
         }
     }
 
+    /// Automatic retry with exponential backoff. Called internally when downloads fail.
     func retry(itemID: String) {
+        guard let index = queue.firstIndex(where: { $0.id == itemID }) else { return }
+        var queueItem = queue[index]
+
+        // Check retry limit
+        if queueItem.retryCount >= RetryConfig.maxRetries {
+            logger.warning("Max retries (\(RetryConfig.maxRetries)) reached for item \(itemID)")
+            itemStates[itemID] = .error
+            persistQueue()
+            return
+        }
+
+        // Calculate backoff delay using exponential backoff
+        let backoffDelay = min(
+            RetryConfig.baseBackoffSeconds * pow(2, Double(queueItem.retryCount)),
+            RetryConfig.maxBackoffSeconds
+        )
+
+        // Update retry count and failure date
+        queueItem.retryCount += 1
+        queueItem.lastFailureDate = Date()
+        queue[index] = queueItem
+
+        logger.info(
+            "Scheduling retry \(queueItem.retryCount)/\(RetryConfig.maxRetries) for \(itemID) in \(Int(backoffDelay))s"
+        )
+
+        // Schedule retry after backoff delay
+        Task {
+            try? await Task.sleep(for: .seconds(backoffDelay))
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.itemStates[itemID] = .pending
+                self.persistQueue()
+                if self.currentTask == nil {
+                    self.processNextInQueue()
+                }
+            }
+        }
+    }
+
+    /// Manual retry initiated by the user. Resets retry count and retries immediately.
+    func manualRetry(itemID: String) {
+        // Reset retry count for user-initiated retry
+        if let index = queue.firstIndex(where: { $0.id == itemID }) {
+            var queueItem = queue[index]
+            queueItem.retryCount = 0
+            queueItem.lastFailureDate = nil
+            queue[index] = queueItem
+        }
+
         itemStates[itemID] = .pending
         persistQueue()
 
@@ -535,9 +600,20 @@ class DownloadManager: ObservableObject {
             )
 
         case let .failure(error):
-            itemStates[queueItem.id] = .error
             itemProgress.removeValue(forKey: queueItem.id)
             logger.error("Download failed: \(error.localizedDescription)")
+
+            // Check if error is retriable (network errors, not cancellation)
+            let isRetriable = isRetriableError(error)
+            let currentRetryCount = queue.first(where: { $0.id == queueItem.id })?.retryCount ?? 0
+
+            if isRetriable && currentRetryCount < RetryConfig.maxRetries {
+                // Schedule automatic retry with backoff
+                retry(itemID: queueItem.id)
+            } else {
+                // Max retries reached or non-retriable error
+                itemStates[queueItem.id] = .error
+            }
         }
 
         // Clean up
@@ -548,6 +624,43 @@ class DownloadManager: ObservableObject {
         persistQueue()
         downloadsUpdated = ()
         processNextInQueue()
+    }
+
+    /// Determines if an error is retriable (transient network errors vs permanent failures).
+    private func isRetriableError(_ error: Error) -> Bool {
+        // Don't retry cancellation
+        if let downloadError = error as? DownloadError {
+            switch downloadError {
+            case .cancelled:
+                return false
+            case .insufficientSpace:
+                return false // No point retrying if no space
+            case .itemNotFound, .missingParentInfo, .unknownContainer:
+                return false // Permanent errors
+            case .networkError, .fileSystemError, .unknown:
+                return true // Transient errors worth retrying
+            }
+        }
+
+        // For NSErrors, check common network error codes
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorCancelled:
+                return false
+            case NSURLErrorTimedOut,
+                 NSURLErrorCannotFindHost,
+                 NSURLErrorCannotConnectToHost,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorNotConnectedToInternet:
+                return true
+            default:
+                return true // Default to retriable for other URL errors
+            }
+        }
+
+        // Default: retry unknown errors
+        return true
     }
 
     // MARK: - Persistence

@@ -6,8 +6,6 @@
 // Copyright (c) 2026 Jellyfin & Jellyfin Contributors
 //
 
-// BRAY-TODO: Understand why this file is needed vs just using baseitemdto+poster
-
 import Defaults
 import Foundation
 import JellyfinAPI

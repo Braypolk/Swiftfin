@@ -66,6 +66,8 @@ final class DownloadPagingLibraryViewModel: ViewModel {
     @Published
     var itemStates: [String: DownloadItemState] = [:]
 
+    /// Note: `nonisolated init` is required because the superclass `ViewModel` is not `@MainActor` isolated.
+    /// Setup is dispatched to MainActor to maintain thread safety for all `@Published` property access.
     override nonisolated init() {
         super.init()
 

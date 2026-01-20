@@ -108,7 +108,8 @@ extension ItemView {
             case .paused:
                 downloadManager.resume(itemID: viewModel.item.id ?? "")
             case .error, .cancelled:
-                downloadManager.retry(itemID: viewModel.item.id ?? "")
+                // Use manualRetry to reset retry count when user explicitly retries
+                downloadManager.manualRetry(itemID: viewModel.item.id ?? "")
             case .complete:
                 downloadManager.delete(itemID: viewModel.item.id ?? "")
             }
@@ -228,7 +229,7 @@ extension ItemView {
                     buttonFrame {
                         Menu {
                             Button {
-                                downloadManager.retry(
+                                downloadManager.manualRetry(
                                     itemID: viewModel.item.id ?? ""
                                 )
                             } label: {

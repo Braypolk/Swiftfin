@@ -75,6 +75,14 @@ struct DownloadQueueItem: Codable, Hashable, Identifiable {
     let groupTotalSize: Int64?
     let isMetadataOnly: Bool
 
+    // MARK: - Retry Tracking
+
+    /// Number of retry attempts for this item
+    var retryCount: Int
+
+    /// Timestamp of last failure (for backoff calculation)
+    var lastFailureDate: Date?
+
     // MARK: - Initializers
 
     init(
@@ -89,7 +97,9 @@ struct DownloadQueueItem: Codable, Hashable, Identifiable {
         groupCount: Int? = nil,
         size: Int64? = nil,
         groupTotalSize: Int64? = nil,
-        isMetadataOnly: Bool = false
+        isMetadataOnly: Bool = false,
+        retryCount: Int = 0,
+        lastFailureDate: Date? = nil
     ) {
         self.id = id
         self.type = type
@@ -103,6 +113,8 @@ struct DownloadQueueItem: Codable, Hashable, Identifiable {
         self.size = size
         self.groupTotalSize = groupTotalSize
         self.isMetadataOnly = isMetadataOnly
+        self.retryCount = retryCount
+        self.lastFailureDate = lastFailureDate
     }
 
     /// Creates a queue item from a BaseItemDto
@@ -127,6 +139,8 @@ struct DownloadQueueItem: Codable, Hashable, Identifiable {
         self.size = size
         self.groupTotalSize = groupTotalSize
         self.isMetadataOnly = isMetadataOnly
+        self.retryCount = 0
+        self.lastFailureDate = nil
     }
 }
 

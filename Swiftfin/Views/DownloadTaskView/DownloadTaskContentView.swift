@@ -84,7 +84,7 @@ extension DownloadTaskView {
                         case .error:
                             VStack {
                                 Button(L10n.retry) {
-                                    downloadManager.retry(itemID: item.id ?? "")
+                                    downloadManager.manualRetry(itemID: item.id ?? "")
                                 }
                                 .frame(maxWidth: 300)
                                 .frame(height: 50)
