@@ -241,7 +241,7 @@ extension Defaults.Keys {
     // Experimental settings
     enum Experimental {
 
-        static let downloads: Key<Bool> = UserKey("experimentalDownloads", default: false)
+        static let downloads: Key<Bool> = AppKey("experimentalDownloads", default: false)
     }
 
     // tvos specific
